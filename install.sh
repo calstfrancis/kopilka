@@ -1,9 +1,9 @@
 #!/bin/bash
-# Budget App Installation Script
+# Kopilka installation script (from source)
 
 set -e
 
-echo "Installing Budget App..."
+echo "Installing Kopilka..."
 
 # Check for pipx
 if ! command -v pipx &> /dev/null; then
@@ -20,8 +20,11 @@ if ! python3 -c "import gi; gi.require_version('Gtk', '4.0'); gi.require_version
     echo "On openSUSE Tumbleweed:"
     echo "  sudo zypper install python3-gobject typelib-1_0-Adw-1 typelib-1_0-Gtk-4_0"
     echo ""
-    echo "On Ubuntu/Debian:"
+    echo "On Ubuntu 22.04+:"
     echo "  sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1"
+    echo ""
+    echo "On Fedora 38+:"
+    echo "  sudo dnf install python3-gobject gtk4 libadwaita"
     echo ""
     exit 1
 fi
@@ -31,21 +34,16 @@ echo "Installing via pipx..."
 pipx install --system-site-packages .
 
 # Create config directory
-mkdir -p ~/.config/budgetapp
-mkdir -p ~/.local/share/budgetapp
+mkdir -p ~/.config/kopilka
 
-# Copy desktop entry (optional)
-if [ -f "io.github.calstfrancis.budgetapp.desktop" ]; then
-    mkdir -p ~/.local/share/applications
-    cp io.github.calstfrancis.budgetapp.desktop ~/.local/share/applications/
-    echo "Desktop entry installed"
-fi
+# Install desktop entry and icon
+python3 -m kopilka.desktop_install
 
 echo ""
-echo "✓ Budget App installed!"
+echo "Kopilka installed!"
 echo ""
 echo "To launch:"
-echo "  budgetapp"
+echo "  kopilka"
 echo ""
 echo "To update later:"
-echo "  pipx upgrade budgetapp"
+echo "  pipx upgrade kopilka"

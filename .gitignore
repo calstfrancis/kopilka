@@ -23,11 +23,21 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Virtual environments
 venv/
 ENV/
 env/
+.venv/
+
+# AppImage build artifacts
+AppDir/
+*.AppImage
+*.AppImage.zsync
+appimage-build/
 
 # IDE
 .vscode/
@@ -40,6 +50,4 @@ env/
 .DS_Store
 .Trash-*
 *.log
-
-# Config (user-specific)
-~/.config/kopilka/config.json
+Thumbs.db

@@ -71,13 +71,54 @@ def set_budget_path(path: str):
     """Set custom budget file path."""
     config_dir = ensure_config_dir()
     config_file = config_dir / "config.json"
-    
+
     config = {}
     if config_file.exists():
         with open(config_file, 'r') as f:
             config = json.load(f)
-    
+
     config['budget_path'] = path
-    
+
     with open(config_file, 'w') as f:
         json.dump(config, f, indent=2)
+
+
+def load_config() -> dict:
+    """Load app config from ~/.config/kopilka/config.json."""
+    config_file = Path.home() / ".config" / "kopilka" / "config.json"
+    if config_file.exists():
+        try:
+            with open(config_file, 'r') as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def save_config(config: dict):
+    """Save app config to ~/.config/kopilka/config.json."""
+    config_dir = ensure_config_dir()
+    with open(config_dir / "config.json", 'w') as f:
+        json.dump(config, f, indent=2)
+
+
+def is_first_launch() -> bool:
+    """Return True if setup wizard has not been completed."""
+    config = load_config()
+    return "user1_name" not in config
+
+
+def sync_to_pcloud(budget) -> bool:
+    """Copy budget JSON to pCloud sync path if configured."""
+    if not budget.sync_path:
+        return False
+    try:
+        import shutil
+        local_path = get_budget_path()
+        dest = Path(budget.sync_path) / "budget.json"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(local_path, dest)
+        return True
+    except Exception as e:
+        print(f"Sync error: {e}")
+        return False

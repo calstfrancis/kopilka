@@ -8,4 +8,5 @@ Icon=io.github.calstfrancis.kopilka
 Categories=Office;Finance;
 Terminal=false
 StartupNotify=true
+StartupWMClass=kopilka
 X-GNOME-SingleWindow=true

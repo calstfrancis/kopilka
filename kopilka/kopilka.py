@@ -6,18 +6,20 @@ Shared finance management with tax estimation and spending tracking.
 
 import sys
 import gi
+
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 
 from gi.repository import Gtk, Adw, Gio
 from kopilka.ui.app_window import AppWindow
 from kopilka.storage.json_io import load_budget, ensure_config_dir
+from kopilka.desktop_install import ensure_installed
 
 
 def main():
     """Main application entry point."""
-    # Ensure config directory exists
     ensure_config_dir()
+    ensure_installed()
     
     # Create application
     app = Adw.Application(

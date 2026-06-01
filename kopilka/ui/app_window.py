@@ -4,78 +4,406 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 
-from gi.repository import Gtk, Adw, Gio
+from gi.repository import Gtk, Adw, GLib, Gio
+
 from kopilka.ui.dashboard import Dashboard
-from kopilka.storage.json_io import load_budget
+from kopilka.ui.views import IncomeView, ExpenseView, DebtView, CategoryView
+from kopilka.ui.spending_log import SpendingLogView
+from kopilka.ui.reports import ReportsView
+from kopilka.ui.savings import SavingsView
+from kopilka.ui.settings import SettingsView
+from kopilka.storage.json_io import (
+    load_budget, save_budget, is_first_launch,
+    get_budget_path, load_config,
+)
+from kopilka.logic.sync import SyncManager
+
+
+NAV_PAGES = [
+    ("dashboard",  "go-home-symbolic",             "Dashboard"),
+    ("income",     "value-increase-symbolic",       "Income"),
+    ("expenses",   "value-decrease-symbolic",       "Expenses"),
+    ("debt",       "alarm-symbolic",                "Debt"),
+    ("categories", "tag-symbolic",                 "Categories"),
+    ("log",        "view-list-symbolic",            "Spending Log"),
+    ("reports",    "view-sort-descending-symbolic", "Reports"),
+    ("savings",    "starred-symbolic",              "Savings & Goals"),
+    ("settings",   "preferences-system-symbolic",   "Settings"),
+]
 
 
 class AppWindow(Adw.ApplicationWindow):
-    """Main application window."""
-    
     def __init__(self, application):
-        """Initialize the main window."""
         super().__init__(application=application)
-        
-        # Load budget data
+
         self.budget = load_budget()
-        
-        # Window properties
-        self.set_title("Budget")
+        self._budget_path = get_budget_path()
+        self._load_mtime = SyncManager.get_file_mtime(self._budget_path)
+        self._current_user = load_config().get("user1_name", self.budget.couple[0])
+
+        self.set_title("Kopilka")
         self.set_default_size(1200, 800)
-        
-        # Create main box
-        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.set_content(main_box)
-        
-        # Header bar
-        header_bar = Adw.HeaderBar()
-        main_box.append(header_bar)
-        
-        # Create sidebar + content area
-        paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
-        main_box.append(paned)
-        main_box.set_vexpand(True)
-        
-        # Sidebar
-        self.sidebar = self._build_sidebar()
-        paned.set_start_child(self.sidebar)
-        paned.set_position(200)
-        
-        # Content area (start with dashboard)
-        self.content_stack = Gtk.Stack()
-        paned.set_end_child(self.content_stack)
-        
-        # Add dashboard
-        self.dashboard = Dashboard(self.budget)
-        self.content_stack.add_named(self.dashboard, "dashboard")
-        self.content_stack.set_visible_child_name("dashboard")
-    
-    def _build_sidebar(self):
-        """Build the sidebar navigation."""
-        sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        sidebar.set_margin_top(10)
-        sidebar.set_margin_bottom(10)
-        sidebar.set_margin_start(10)
-        sidebar.set_margin_end(10)
-        
-        # Navigation buttons
-        nav_buttons = [
-            ("📊 Dashboard", "dashboard"),
-            ("💰 Income", "income"),
-            ("💸 Expenses", "expenses"),
-            ("🚩 Debt", "debt"),
-            ("📝 Spending Log", "log"),
-            ("⚙️ Settings", "settings"),
-        ]
-        
-        for label, action in nav_buttons:
-            btn = Gtk.Button(label=label)
-            btn.connect("clicked", self._on_nav_clicked, action)
-            sidebar.append(btn)
-        
-        return sidebar
-    
-    def _on_nav_clicked(self, button, page):
-        """Handle sidebar navigation."""
-        # TODO: Switch content based on page
-        print(f"Navigation: {page}")
+
+        self._toast_overlay = Adw.ToastOverlay()
+        self.set_content(self._toast_overlay)
+
+        self._split_view = Adw.OverlaySplitView()
+        self._split_view.set_show_sidebar(True)
+        self._split_view.set_sidebar_width_fraction(0.22)
+        self._split_view.set_min_sidebar_width(190)
+        self._split_view.set_max_sidebar_width(260)
+        self._toast_overlay.set_child(self._split_view)
+
+        self._mono_provider = Gtk.CssProvider()
+        self._mono_provider.load_from_string("* { font-family: monospace; }")
+
+        # ── Sidebar ──────────────────────────────────────────────────────────
+        sidebar_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+
+        sidebar_header = Adw.HeaderBar()
+        sidebar_header.set_show_end_title_buttons(False)
+        sidebar_box.append(sidebar_header)
+
+        self._sidebar_title = Adw.WindowTitle()
+        self._sidebar_title.set_title("Kopilka")
+        self._sidebar_title.set_subtitle(
+            " & ".join(self.budget.couple) if self.budget.couple else "Budget"
+        )
+        sidebar_header.set_title_widget(self._sidebar_title)
+
+        # Budget file menu
+        budget_menu = Gio.Menu()
+        budget_menu.append("New Budget…", "win.new-budget")
+        budget_menu.append("Open Budget…", "win.open-budget")
+        menu_btn = Gtk.MenuButton()
+        menu_btn.set_icon_name("open-menu-symbolic")
+        menu_btn.set_menu_model(budget_menu)
+        menu_btn.set_tooltip_text("Budget files")
+        sidebar_header.pack_end(menu_btn)
+
+        new_action = Gio.SimpleAction.new("new-budget", None)
+        new_action.connect("activate", self._on_new_budget)
+        self.add_action(new_action)
+
+        open_action = Gio.SimpleAction.new("open-budget", None)
+        open_action.connect("activate", self._on_open_budget)
+        self.add_action(open_action)
+
+        self._nav_listbox = Gtk.ListBox()
+        self._nav_listbox.add_css_class("navigation-sidebar")
+        self._nav_listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self._nav_listbox.set_vexpand(True)
+        self._nav_listbox.connect("row-selected", self._on_nav_selected)
+        sidebar_box.append(self._nav_listbox)
+
+        self._nav_rows = {}
+        for page_id, icon_name, label_text in NAV_PAGES:
+            row = Gtk.ListBoxRow()
+            row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+            row_box.set_margin_top(9)
+            row_box.set_margin_bottom(9)
+            row_box.set_margin_start(14)
+            row_box.set_margin_end(14)
+
+            img = Gtk.Image.new_from_icon_name(icon_name)
+            img.set_icon_size(Gtk.IconSize.NORMAL)
+            row_box.append(img)
+
+            lbl = Gtk.Label(label=label_text)
+            lbl.set_xalign(0)
+            lbl.set_hexpand(True)
+            row_box.append(lbl)
+
+            row.set_child(row_box)
+            self._nav_listbox.append(row)
+            self._nav_rows[page_id] = row
+
+        # ── Sidebar bottom toggles ────────────────────────────────────────────
+        sep = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+        sidebar_box.append(sep)
+
+        toggles_lb = Gtk.ListBox()
+        toggles_lb.add_css_class("boxed-list")
+        toggles_lb.set_selection_mode(Gtk.SelectionMode.NONE)
+        toggles_lb.set_margin_top(8)
+        toggles_lb.set_margin_bottom(12)
+        toggles_lb.set_margin_start(8)
+        toggles_lb.set_margin_end(8)
+
+        simple_row = Adw.ActionRow()
+        simple_row.set_title("Simple")
+        simple_row.set_subtitle("Hide breakdown & bills")
+        self._simple_switch = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self._simple_switch.connect("notify::active", self._on_simple_toggled)
+        simple_row.add_suffix(self._simple_switch)
+        simple_row.set_activatable_widget(self._simple_switch)
+        toggles_lb.append(simple_row)
+
+        gost_row = Adw.ActionRow()
+        gost_row.set_title("Gost font")
+        gost_row.set_subtitle("Monospace type")
+        self._gost_switch = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self._gost_switch.connect("notify::active", self._on_font_toggled)
+        gost_row.add_suffix(self._gost_switch)
+        gost_row.set_activatable_widget(self._gost_switch)
+        toggles_lb.append(gost_row)
+
+        sidebar_box.append(toggles_lb)
+
+        self._split_view.set_sidebar(sidebar_box)
+
+        # ── Content area ─────────────────────────────────────────────────────
+        content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+
+        content_header = Adw.HeaderBar()
+
+        toggle_btn = Gtk.ToggleButton()
+        toggle_btn.set_icon_name("sidebar-show-symbolic")
+        toggle_btn.set_tooltip_text("Toggle sidebar")
+        toggle_btn.set_active(True)
+        toggle_btn.connect("toggled", lambda b: self._split_view.set_show_sidebar(b.get_active()))
+        content_header.pack_start(toggle_btn)
+
+        self._page_title = Adw.WindowTitle()
+        self._page_title.set_title("Dashboard")
+        content_header.set_title_widget(self._page_title)
+
+        content_box.append(content_header)
+
+        # Reload banner (hidden until a newer version of the file is detected)
+        self._reload_banner = Adw.Banner()
+        self._reload_banner.set_button_label("Reload")
+        self._reload_banner.connect("button-clicked", self._on_reload_clicked)
+        content_box.append(self._reload_banner)
+
+        self._stack = Gtk.Stack()
+        self._stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+        self._stack.set_transition_duration(150)
+        self._stack.set_hexpand(True)
+        self._stack.set_vexpand(True)
+        content_box.append(self._stack)
+
+        self._split_view.set_content(content_box)
+
+        # ── Views ─────────────────────────────────────────────────────────────
+        self.dashboard = Dashboard(self.budget, on_change=self._on_budget_change)
+        self._stack.add_named(self.dashboard, "dashboard")
+
+        self.income_view = IncomeView(self.budget, self._on_budget_change)
+        self._stack.add_named(self.income_view, "income")
+
+        self.expense_view = ExpenseView(self.budget, self._on_budget_change)
+        self._stack.add_named(self.expense_view, "expenses")
+
+        self.debt_view = DebtView(self.budget, self._on_budget_change)
+        self._stack.add_named(self.debt_view, "debt")
+
+        self.category_view = CategoryView(self.budget, self._on_budget_change)
+        self._stack.add_named(self.category_view, "categories")
+
+        self.log_view = SpendingLogView(self.budget, self._on_budget_change)
+        self._stack.add_named(self.log_view, "log")
+
+        self.reports_view = ReportsView(self.budget, self._on_budget_change)
+        self._stack.add_named(self.reports_view, "reports")
+
+        self.savings_view = SavingsView(self.budget, self._on_budget_change)
+        self._stack.add_named(self.savings_view, "savings")
+
+        self.settings_view = SettingsView(self.budget, self._on_budget_change)
+        self._stack.add_named(self.settings_view, "settings")
+
+        self._nav_listbox.select_row(self._nav_rows["dashboard"])
+
+        self.connect("notify::is-active", self._on_focus_changed)
+
+        GLib.idle_add(self._on_startup)
+
+    # ── Sync ──────────────────────────────────────────────────────────────────
+
+    def _on_startup(self):
+        """Run once after window is mapped: wizard check then conflict check."""
+        if is_first_launch():
+            from kopilka.ui.setup_wizard import SetupWizard
+            SetupWizard(self.budget, self._on_wizard_complete).present(self)
+        else:
+            conflicts = SyncManager.conflict_files(self._budget_path)
+            if conflicts:
+                self._show_conflict_dialog(conflicts)
+        return GLib.SOURCE_REMOVE
+
+    def _on_focus_changed(self, _win, _param):
+        if not self.is_active():
+            return
+        if SyncManager.is_externally_modified(self._budget_path, self._load_mtime):
+            meta = SyncManager.peek_metadata(self._budget_path)
+            who = meta["last_modified_by"]
+            when = SyncManager.friendly_time(meta["last_modified"])
+            msg = f"Budget updated by {who}"
+            if when:
+                msg += f" — {when}"
+            self._reload_banner.set_title(msg)
+            self._reload_banner.set_revealed(True)
+
+    def _on_reload_clicked(self, _banner):
+        self.budget = load_budget()
+        self._load_mtime = SyncManager.get_file_mtime(self._budget_path)
+        self._reload_banner.set_revealed(False)
+        self._refresh_all_views()
+
+        toast = Adw.Toast()
+        toast.set_title("Budget reloaded")
+        self._toast_overlay.add_toast(toast)
+
+    def _show_conflict_dialog(self, conflict_paths):
+        names = "\n".join(p.name for p in conflict_paths[:3])
+        dlg = Adw.AlertDialog()
+        dlg.set_heading("Sync Conflict Detected")
+        dlg.set_body(
+            "pCloud found conflicting versions of your budget:\n\n"
+            f"{names}\n\n"
+            "Keep your current version and delete the conflict files, "
+            "or open the pCloud folder to review them manually."
+        )
+        dlg.add_response("keep", "Keep Current")
+        dlg.add_response("open_folder", "Open Folder")
+        dlg.set_default_response("keep")
+        dlg.set_close_response("keep")
+        dlg.connect("response", self._on_conflict_response, conflict_paths)
+        dlg.present(self)
+
+    def _on_conflict_response(self, _dlg, response, conflict_paths):
+        if response == "open_folder":
+            import subprocess
+            folder = str(conflict_paths[0].parent)
+            subprocess.Popen(["xdg-open", folder])
+        elif response == "keep":
+            for p in conflict_paths:
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
+
+    # ── Navigation ────────────────────────────────────────────────────────────
+
+    def _on_nav_selected(self, _listbox, row):
+        if row is None:
+            return
+        for page_id, nav_row in self._nav_rows.items():
+            if nav_row is row:
+                self._stack.set_visible_child_name(page_id)
+                for pid, _icon, label in NAV_PAGES:
+                    if pid == page_id:
+                        self._page_title.set_title(label)
+                        break
+                break
+
+    # ── Budget change ─────────────────────────────────────────────────────────
+
+    def _on_budget_change(self):
+        SyncManager.update_metadata(self.budget, self._current_user)
+        save_budget(self.budget)
+        self._load_mtime = SyncManager.get_file_mtime(self._budget_path)
+        self._reload_banner.set_revealed(False)
+        self._refresh_all_views()
+
+    def _on_wizard_complete(self):
+        self._current_user = load_config().get("user1_name", self.budget.couple[0])
+        self._on_budget_change()
+
+    def _refresh_all_views(self):
+        self.dashboard.refresh(self.budget)
+        self.income_view.refresh()
+        self.expense_view.refresh()
+        self.debt_view.refresh()
+        self.category_view.refresh()
+        self.log_view.refresh()
+        self.reports_view.refresh()
+        self.savings_view.refresh()
+        self._refresh_sidebar_subtitle()
+
+    def _refresh_sidebar_subtitle(self):
+        subtitle = " & ".join(self.budget.couple) if self.budget.couple else "Budget"
+        self._sidebar_title.set_subtitle(subtitle)
+
+    # ── First launch ──────────────────────────────────────────────────────────
+
+    def _check_first_launch(self):
+        if is_first_launch():
+            from kopilka.ui.setup_wizard import SetupWizard
+            SetupWizard(self.budget, self._on_wizard_complete).present(self)
+        return GLib.SOURCE_REMOVE
+
+    # ── Multiple budgets ──────────────────────────────────────────────────────
+
+    def _on_new_budget(self, _action, _param):
+        dialog = Gtk.FileDialog()
+        dialog.set_title("Save New Budget As…")
+        dialog.set_initial_name("budget.json")
+        dialog.save(self, None, self._new_budget_chosen)
+
+    def _new_budget_chosen(self, dialog, result):
+        try:
+            f = dialog.save_finish(result)
+            if not f:
+                return
+            path = f.get_path()
+            from kopilka.storage.json_io import set_budget_path, save_budget
+            from kopilka.model.budget import Budget
+            set_budget_path(path)
+            self._budget_path = path
+            self.budget = Budget()
+            self.budget.couple = [self._current_user, "Partner"]
+            save_budget(self.budget)
+            self._load_mtime = __import__("kopilka.logic.sync", fromlist=["SyncManager"]).SyncManager.get_file_mtime(path)
+            self._refresh_all_views()
+            toast = Adw.Toast()
+            toast.set_title(f"New budget created: {__import__('pathlib').Path(path).name}")
+            self._toast_overlay.add_toast(toast)
+        except Exception:
+            pass
+
+    def _on_open_budget(self, _action, _param):
+        dialog = Gtk.FileDialog()
+        dialog.set_title("Open Budget File")
+        f = Gio.File.new_for_path(__import__("os").path.dirname(self._budget_path))
+        dialog.set_initial_folder(f)
+        dialog.open(self, None, self._open_budget_chosen)
+
+    def _open_budget_chosen(self, dialog, result):
+        try:
+            f = dialog.open_finish(result)
+            if not f:
+                return
+            path = f.get_path()
+            from kopilka.storage.json_io import set_budget_path, load_budget
+            from kopilka.logic.sync import SyncManager
+            set_budget_path(path)
+            self._budget_path = path
+            self.budget = load_budget()
+            self._load_mtime = SyncManager.get_file_mtime(path)
+            self._current_user = self.budget.couple[0] if self.budget.couple else "User 1"
+            self._refresh_all_views()
+            toast = Adw.Toast()
+            toast.set_title(f"Opened: {__import__('pathlib').Path(path).name}")
+            self._toast_overlay.add_toast(toast)
+        except Exception:
+            pass
+
+    def _on_font_toggled(self, switch, _param):
+        display = self.get_display()
+        if switch.get_active():
+            Gtk.StyleContext.add_provider_for_display(
+                display, self._mono_provider,
+                Gtk.STYLE_PROVIDER_PRIORITY_USER,
+            )
+        else:
+            Gtk.StyleContext.remove_provider_for_display(
+                display, self._mono_provider,
+            )
+
+    def _on_simple_toggled(self, switch, _param):
+        self.dashboard.set_simple_mode(switch.get_active())
+
+    def add_toast(self, toast):
+        self._toast_overlay.add_toast(toast)
