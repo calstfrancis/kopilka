@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kopilka"
+version = "0.1.0"
+description = "Kopilka — couples budget planner with shared finance management"
+readme = "README.md"
+license = {text = "GPL-3.0"}
+authors = [{name = "Praxis"}]
+requires-python = ">=3.10"
+
+dependencies = [
+    "PyGObject>=3.46",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "black>=23.0",
+    "pylint>=2.0",
+]
+
+[project.scripts]
+kopilka = "kopilka.kopilka:main"
+
+[tool.setuptools]
+packages = ["kopilka", "kopilka.ui", "kopilka.model", "kopilka.logic", "kopilka.storage"]

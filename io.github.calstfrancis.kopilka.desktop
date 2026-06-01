@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Kopilka
+Comment=Couples budget planner — shared finance management and tax estimation
+Exec=kopilka %U
+Icon=accessories-calculator
+Categories=Office;Finance;
+Terminal=false
+StartupNotify=true
+X-GNOME-SingleWindow=true
