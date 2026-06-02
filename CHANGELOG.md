@@ -2,6 +2,62 @@
 
 All notable changes to Kopilka are documented here.
 
+## [0.3.0] — 2026-06-02
+
+### Added
+
+**One-time purchase pool**
+- New `ONE_TIME_CATEGORY_ID` sentinel lets spending entries be logged against an annual discretionary pool rather than a rolling category
+- Dashboard shows YTD one-time spend and annual pool remaining (coloured green/red)
+- `BudgetCalculator.yearly_one_time_spending()` sums entries under the sentinel for the current year
+
+**Recurring entries**
+- New `RecurringEntry` dataclass — a spending template with name, category, amount, frequency (weekly / biweekly / monthly), and next-due date
+- Stored in `Budget.recurring`; auto-inserted into the spending log when `next_date` is reached
+
+**Category colours**
+- `SpendingCategory.color` stores a hex colour string
+- 12 preset colours in `CATEGORY_COLORS` (blue, green, yellow, orange, red, purple, brown, teal, pink, indigo, forest, slate)
+- Category dialog now shows a colour-swatch picker with active-ring highlight
+
+**Bill reminders — weekly and yearly support**
+- `FixedExpense.due_weekday` (0=Mon…6=Sun) for weekly bills
+- `FixedExpense.due_doy` (1–366 day-of-year) for yearly bills
+- `BudgetCalculator.bills_due_soon()` now correctly handles all four frequency families (weekly, monthly/biweekly/semesterly, yearly, once)
+- Expense dialog shows the appropriate due-date field per frequency: weekday picker for weekly, month + day pickers for yearly, day-of-month spinner otherwise
+
+**Configurable bills lookahead**
+- `Budget.bills_look_ahead_days` (default 7) sets the bills-due-soon window
+- Settings view exposes the field; dashboard "No bills due" message reflects the configured value
+
+**Biweekly payday alignment**
+- `IncomeSource.next_payday` stores a reference ISO date for biweekly sources
+- `BudgetCalculator.next_biweekly_payday()` advances the reference by 14-day intervals to find the next upcoming payday
+- Income dialog shows the reference payday field when frequency is biweekly
+
+**Asset interest rate**
+- `Asset.interest_rate` (annual %) added to the model and savings dialogs
+
+**Gost Type B font**
+- `gosttypeb.ttf` bundled in `kopilka/data/fonts/` — no system font installation required
+- Font loaded at startup via `PangoCairo.FontMap.get_default().add_font_file()`
+- Sidebar toggle renamed "Gost Type B" with subtitle "Technical drafting typeface"
+
+**Quick-log shortcut**
+- `Ctrl+Shift+L` opens the log-purchase dialog from anywhere in the app
+
+### Fixed
+
+- `UnboundLocalError: cannot access local variable 'BudgetCalculator'` crash in `CategoryView.refresh()` caused by a shadowing local import inside the method body
+- Bills-due-soon calculation skipped weekly and yearly expenses entirely (only day-of-month was checked); weekly bills now use `due_weekday`, yearly bills use `due_doy`
+
+### Changed
+
+- `pyproject.toml` version bumped to 0.3.0
+- `kopilka/data/` and `kopilka/data/fonts/` added as proper Python subpackages (with `__init__.py`) so `importlib.resources` can resolve bundled assets
+
+---
+
 ## [0.2.0] — 2026-06-01
 
 ### Added

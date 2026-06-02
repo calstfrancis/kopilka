@@ -6,6 +6,26 @@ from datetime import datetime
 import uuid
 
 
+# Sentinel category_id for one-time / irregular purchases
+ONE_TIME_CATEGORY_ID = "__one_time__"
+
+# Preset palette for category colour pills
+CATEGORY_COLORS = [
+    "#3584e4",  # blue
+    "#33d17a",  # green
+    "#f6d32d",  # yellow
+    "#ff7800",  # orange
+    "#e01b24",  # red
+    "#9141ac",  # purple
+    "#986a44",  # brown
+    "#1c787e",  # teal
+    "#e61a80",  # pink
+    "#1a5fb4",  # indigo
+    "#26a269",  # forest
+    "#5c5c5c",  # slate
+]
+
+
 @dataclass
 class IncomeSource:
     name: str
@@ -17,6 +37,7 @@ class IncomeSource:
     notes: str = ""
     active: bool = True
     date: str = ""          # ISO date for one-time items
+    next_payday: str = ""   # ISO date reference for biweekly pay alignment
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
 
@@ -28,7 +49,9 @@ class FixedExpense:
     notes: str = ""
     active: bool = True
     date: str = ""          # ISO date for one-time items
-    due_day: int = 0        # day-of-month (1-31); 0 = no reminder
+    due_day: int = 0        # day-of-month (1-31) for monthly/biweekly/semesterly; 0 = no reminder
+    due_weekday: int = -1   # 0=Mon…6=Sun for weekly frequency; -1 = not set
+    due_doy: int = 0        # 1-366 day-of-year for yearly frequency; 0 = not set
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
 
@@ -76,6 +99,7 @@ class Asset:
     owner: str
     balance: float          # current market value / balance
     institution: str = ""   # TD, RBC, Questrade, Wealthsimple…
+    interest_rate: float = 0.0  # annual interest / dividend rate (%)
     notes: str = ""
     # Each entry: {date, balance, change, change_type, note}
     # change_type: deposit | withdrawal | interest | dividend | gain | loss | fee | transfer | other
@@ -121,6 +145,7 @@ class SpendingCategory:
     deficit_amortize_cycles: int = 3
     # Monthly budget overrides  {month_int: amount}  e.g. {12: 400.0}
     monthly_overrides: dict = field(default_factory=dict)
+    color: str = ""         # hex colour for pill labels e.g. "#3584e4"; "" = no colour
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     @property
@@ -139,10 +164,24 @@ class SpendingCategory:
 @dataclass
 class SpendingEntry:
     date: str               # ISO format
-    category_id: str
+    category_id: str        # SpendingCategory.id or ONE_TIME_CATEGORY_ID
     amount: float
     description: str
     user: str
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+
+
+@dataclass
+class RecurringEntry:
+    """A template that auto-inserts a SpendingEntry when next_date is reached."""
+    name: str
+    category_id: str        # SpendingCategory.id or ONE_TIME_CATEGORY_ID
+    amount: float
+    description: str
+    user: str
+    frequency: str          # weekly | biweekly | monthly
+    next_date: str          # ISO date — when to next insert
+    active: bool = True
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
 
@@ -157,6 +196,7 @@ class Budget:
     tax_year: int = 2026
     province: str = "Nova Scotia"
     sync_path: str = ""
+    bills_look_ahead_days: int = 7
 
     income: List[IncomeSource] = field(default_factory=list)
     expenses_fixed: List[FixedExpense] = field(default_factory=list)
@@ -165,6 +205,7 @@ class Budget:
     spending: List[SpendingEntry] = field(default_factory=list)
     savings_goals: List[SavingsGoal] = field(default_factory=list)
     assets: List[Asset] = field(default_factory=list)
+    recurring: List[RecurringEntry] = field(default_factory=list)
 
     def to_dict(self):
         return {
@@ -180,6 +221,7 @@ class Budget:
                 "tax_year": self.tax_year,
                 "province": self.province,
                 "sync_path": self.sync_path,
+                "bills_look_ahead_days": self.bills_look_ahead_days,
             },
             "income":          [asdict(i) for i in self.income],
             "expenses_fixed":  [asdict(e) for e in self.expenses_fixed],
@@ -193,12 +235,14 @@ class Budget:
                     "deficit_policy": c.deficit_policy,
                     "deficit_amortize_cycles": c.deficit_amortize_cycles,
                     "monthly_overrides": {str(k): v for k, v in c.monthly_overrides.items()},
+                    "color": c.color,
                 }
                 for c in self.categories
             ],
             "spending":        [asdict(s) for s in self.spending],
             "savings_goals":   [asdict(g) for g in self.savings_goals],
             "assets":          [asdict(a) for a in self.assets],
+            "recurring":       [asdict(r) for r in self.recurring],
         }
 
     @staticmethod
@@ -214,10 +258,11 @@ class Budget:
 
         if "config" in data:
             c = data["config"]
-            budget.currency   = c.get("currency", "CAD")
-            budget.tax_year   = c.get("tax_year", 2026)
-            budget.province   = c.get("province", "Nova Scotia")
-            budget.sync_path  = c.get("sync_path", "")
+            budget.currency              = c.get("currency", "CAD")
+            budget.tax_year              = c.get("tax_year", 2026)
+            budget.province              = c.get("province", "Nova Scotia")
+            budget.sync_path             = c.get("sync_path", "")
+            budget.bills_look_ahead_days = c.get("bills_look_ahead_days", 7)
 
         for i in data.get("income", []):
             try:
@@ -265,6 +310,12 @@ class Budget:
         for a in data.get("assets", []):
             try:
                 budget.assets.append(Asset(**a))
+            except TypeError:
+                pass
+
+        for r in data.get("recurring", []):
+            try:
+                budget.recurring.append(RecurringEntry(**r))
             except TypeError:
                 pass
 

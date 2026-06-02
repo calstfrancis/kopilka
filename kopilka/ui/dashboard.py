@@ -113,6 +113,17 @@ class Dashboard(Gtk.Box):
         self.available_row, self.avail_lbl = _amount_row("Unallocated")
         budget_group.add(self.available_row)
 
+        self.onetimey_row, self.onetimey_lbl = _amount_row(
+            "One-time Purchases (YTD)",
+            "logged against the annual discretionary pool"
+        )
+        budget_group.add(self.onetimey_row)
+
+        self.onetimey_rem_row, self.onetimey_rem_lbl = _amount_row(
+            "Annual Pool Remaining"
+        )
+        budget_group.add(self.onetimey_rem_row)
+
         # ── Bills & Reminders (collapsible) ───────────────────────────────────
         self._bills_container = Adw.PreferencesGroup()
         page.add(self._bills_container)
@@ -176,6 +187,16 @@ class Dashboard(Gtk.Box):
         else:
             _set_amount(self.avail_lbl, unallocated, color_class="success")
 
+        ot_spent   = BudgetCalculator.yearly_one_time_spending(budget)
+        annual_pool = max(0.0, BudgetCalculator.available_to_spend(budget)) * 12
+        ot_remain  = annual_pool - ot_spent
+        _set_amount(self.onetimey_lbl, ot_spent, negative=True,
+                    color_class="dim-label" if ot_spent == 0 else "warning")
+        if ot_remain < 0:
+            _set_amount(self.onetimey_rem_lbl, abs(ot_remain), negative=True, color_class="error")
+        else:
+            _set_amount(self.onetimey_rem_lbl, ot_remain, color_class="success")
+
         # ── Bills (collapsible expander) ──────────────────────────────────────
         if self._bills_expander:
             self._bills_expanded = self._bills_expander.get_expanded()
@@ -195,10 +216,11 @@ class Dashboard(Gtk.Box):
             add_btn.connect("clicked", self._on_add_bill)
             bills_exp.add_suffix(add_btn)
 
-        upcoming = BudgetCalculator.bills_due_soon(budget, days_ahead=7)
+        look_ahead = getattr(budget, "bills_look_ahead_days", 7)
+        upcoming = BudgetCalculator.bills_due_soon(budget, days_ahead=look_ahead)
         if not upcoming:
             row = Adw.ActionRow()
-            row.set_title("No bills due in the next 7 days")
+            row.set_title(f"No bills due in the next {look_ahead} days")
             row.set_sensitive(False)
             bills_exp.add_row(row)
         else:

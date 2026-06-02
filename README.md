@@ -6,9 +6,11 @@ A couples budget planner built with GTK 4 and libadwaita. Designed for two-perso
 
 - **Dashboard** — income breakdown, net budget, bills calendar, net worth summary, spending category bars
 - **Income tracking** — multiple sources per person with Nova Scotia 2026 tax estimation (federal + provincial + CPP tier 1 & 2 + EI)
-- **Fixed expenses** — monthly/weekly/annual bills with calendar view and next-due dates
+- **Fixed expenses** — monthly/weekly/annual bills with calendar view and next-due dates (configurable lookahead window)
 - **Debt management** — payoff projections with what-if extra payment slider
-- **Discretionary spending** — per-category budgets with weekly/monthly/bi-weekly/semi-annual periods, rollover support, and seasonal overrides
+- **Discretionary spending** — per-category budgets with weekly/monthly/bi-weekly/semi-annual periods, rollover support, seasonal overrides, and colour-coded category pills
+- **One-time purchase pool** — log irregular purchases against an annual discretionary pool; dashboard tracks YTD spend and remaining allowance
+- **Recurring entries** — spending templates (weekly/biweekly/monthly) that auto-insert into the log
 - **Spending log** — date-filtered entry log grouped by date with category tagging
 - **Reports** — donut charts, monthly bar charts, per-category trend rows, filterable by week / month / quarter / year
 - **Assets & savings goals** — TFSA, RRSP, chequing, and brokerage accounts with balance history and line charts; lightweight savings goal tracker
@@ -94,7 +96,7 @@ kopilka
 ```
 kopilka/
   kopilka.py          Entry point
-  model/budget.py     Dataclasses: Budget, IncomeSource, Debt, Asset, SavingsGoal, …
+  model/budget.py     Dataclasses: Budget, IncomeSource, Debt, Asset, SavingsGoal, RecurringEntry, …
   logic/
     calculations.py   Pure math — income, tax deductions, debt payoff, rollover
     tax_calc.py       Federal + NS 2026 marginal tax, CPP tier 1+2, EI

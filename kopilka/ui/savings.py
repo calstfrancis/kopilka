@@ -81,11 +81,6 @@ class _AssetDialog(Adw.Dialog):
         hdr = Adw.HeaderBar()
         tv.add_top_bar(hdr)
 
-        Gtk.Button(label="Cancel").connect("clicked", lambda b: self.close()) or \
-            hdr.pack_start((_c := Gtk.Button(label="Cancel"),
-                            _c.connect("clicked", lambda b: self.close()),
-                            _c)[0])
-
         cancel = Gtk.Button(label="Cancel")
         cancel.connect("clicked", lambda b: self.close())
         hdr.pack_start(cancel)
@@ -133,6 +128,17 @@ class _AssetDialog(Adw.Dialog):
         self.balance_row.set_digits(2)
         group.add(self.balance_row)
 
+        self.rate_row = Adw.SpinRow.new_with_range(0, 100, 0.05)
+        self.rate_row.set_title("Annual Interest / Return Rate (%)")
+        self.rate_row.set_subtitle("Used for projected growth — 0 to skip")
+        self.rate_row.set_digits(2)
+        self.rate_row.set_tooltip_text(
+            "Annual interest rate for savings accounts and GICs, "
+            "or expected annual return for investment accounts. "
+            "Leave at 0 if not applicable."
+        )
+        group.add(self.rate_row)
+
         self.notes_row = Adw.EntryRow()
         self.notes_row.set_title("Notes")
         group.add(self.notes_row)
@@ -146,6 +152,7 @@ class _AssetDialog(Adw.Dialog):
                 self.owner_row.set_selected(owners.index(existing.owner))
             self.institution_row.set_text(existing.institution or "")
             self.balance_row.set_value(existing.balance)
+            self.rate_row.set_value(getattr(existing, "interest_rate", 0.0))
             self.notes_row.set_text(existing.notes or "")
 
     def _save(self, _btn):
@@ -155,12 +162,13 @@ class _AssetDialog(Adw.Dialog):
             return
         self.name_row.remove_css_class("error")
 
-        asset_type  = ASSET_TYPES[self.type_row.get_selected()]
-        owners      = self.budget.couple + ["Joint"]
-        owner       = owners[self.owner_row.get_selected()]
-        institution = self.institution_row.get_text().strip()
-        balance     = self.balance_row.get_value()
-        notes       = self.notes_row.get_text().strip()
+        asset_type    = ASSET_TYPES[self.type_row.get_selected()]
+        owners        = self.budget.couple + ["Joint"]
+        owner         = owners[self.owner_row.get_selected()]
+        institution   = self.institution_row.get_text().strip()
+        balance       = self.balance_row.get_value()
+        interest_rate = self.rate_row.get_value()
+        notes         = self.notes_row.get_text().strip()
 
         if self.existing:
             if abs(balance - self.existing.balance) > 0.005:
@@ -171,17 +179,19 @@ class _AssetDialog(Adw.Dialog):
                     "change_type": "other",
                     "note":        "Edited",
                 })
-            self.existing.name        = name
-            self.existing.asset_type  = asset_type
-            self.existing.owner       = owner
-            self.existing.institution = institution
-            self.existing.balance     = balance
-            self.existing.notes       = notes
+            self.existing.name          = name
+            self.existing.asset_type    = asset_type
+            self.existing.owner         = owner
+            self.existing.institution   = institution
+            self.existing.balance       = balance
+            self.existing.interest_rate = interest_rate
+            self.existing.notes         = notes
             item = self.existing
         else:
             item = Asset(
                 name=name, asset_type=asset_type, owner=owner,
-                balance=balance, institution=institution, notes=notes,
+                balance=balance, institution=institution,
+                interest_rate=interest_rate, notes=notes,
             )
             self.budget.assets.append(item)
 
@@ -588,6 +598,11 @@ class SavingsView(Gtk.Box):
         total_assets = BudgetCalculator.total_assets(self.budget)
         total_debt   = BudgetCalculator.total_debt_balance(self.budget)
         nw           = BudgetCalculator.net_worth(self.budget)
+        est_interest = sum(
+            a.balance * a.interest_rate / 100
+            for a in self.budget.assets
+            if getattr(a, "interest_rate", 0.0) > 0
+        )
 
         for title, val, css in [
             ("Total Assets",  total_assets, "success"),
@@ -598,6 +613,17 @@ class SavingsView(Gtk.Box):
             row.set_title(title)
             row.add_suffix(_num(f"${val:,.2f}", css))
             lb.append(row)
+
+        if est_interest > 0:
+            int_row = Adw.ActionRow()
+            int_row.set_title("Est. Annual Interest Earnings")
+            int_row.set_subtitle(f"${est_interest / 12:,.2f}/month")
+            int_row.set_tooltip_text(
+                "Simple interest estimate based on current balances and rates. "
+                "Actual earnings may vary with compounding and balance changes."
+            )
+            int_row.add_suffix(_num(f"${est_interest:,.2f}/yr", "success"))
+            lb.append(int_row)
 
     # ── Asset allocation donut ────────────────────────────────────────────────
 
@@ -659,20 +685,19 @@ class SavingsView(Gtk.Box):
                     ASSET_TYPE_LABELS.get(asset.asset_type, asset.asset_type),
                     asset.owner,
                 ]
+                rate = getattr(asset, "interest_rate", 0.0)
+                if rate > 0:
+                    est_yr = asset.balance * rate / 100
+                    subtitle_parts.append(f"{rate:.2f}%  ·  est. ${est_yr:,.0f}/yr")
                 if asset.balance_history:
                     last = asset.balance_history[-1]
                     change = last.get("change", 0)
                     sign   = "+" if change >= 0 else "−"
                     ct     = last.get("change_type", "")
-                    css    = CHANGE_TYPE_CSS.get(ct, "")
                     subtitle_parts.append(f"last: {sign}${abs(change):,.2f}")
                 row.set_subtitle("  ·  ".join(subtitle_parts))
 
                 row.add_suffix(_num(f"${asset.balance:,.2f}"))
-
-                upd_btn = _icon_btn("value-increase-symbolic", "Log Update")
-                upd_btn.connect("clicked", self._on_update, asset)
-                row.add_suffix(upd_btn)
 
                 edit_btn = _icon_btn("document-edit-symbolic", "Edit")
                 edit_btn.connect("clicked", self._on_edit_asset, asset)
@@ -681,6 +706,9 @@ class SavingsView(Gtk.Box):
                 del_btn = _icon_btn("edit-delete-symbolic", "Delete", "destructive-action")
                 del_btn.connect("clicked", self._on_delete_asset, asset)
                 row.add_suffix(del_btn)
+
+                # Inline quick-balance update child row
+                row.add_row(_inline_balance_row(asset, self._saved))
 
                 # Balance history child rows
                 history = asset.balance_history
@@ -853,8 +881,40 @@ class SavingsView(Gtk.Box):
 
 
 # ---------------------------------------------------------------------------
-# Helper: wrap a raw widget into an ActionRow child accepted by ExpanderRow
+# Helpers: wrap widgets into ExpanderRow children
 # ---------------------------------------------------------------------------
+
+def _inline_balance_row(asset, on_saved):
+    """A child row with a SpinRow + Save button for fast balance updates."""
+    spin = Adw.SpinRow.new_with_range(0, 99_999_999, 100)
+    spin.set_title("Quick balance update")
+    spin.set_subtitle(f"Current: ${asset.balance:,.2f}")
+    spin.set_digits(2)
+    spin.set_value(asset.balance)
+    spin.set_tooltip_text("Enter the new balance and press Save. Logs with today's date and 'other' type.")
+
+    save_btn = Gtk.Button(label="Save")
+    save_btn.add_css_class("suggested-action")
+    save_btn.set_valign(Gtk.Align.CENTER)
+
+    def _do_save(_btn):
+        new_bal = spin.get_value()
+        change  = new_bal - asset.balance
+        asset.balance_history.append({
+            "date":        date.today().isoformat(),
+            "balance":     new_bal,
+            "change":      change,
+            "change_type": "other",
+            "note":        "Quick update",
+        })
+        asset.balance = new_bal
+        if on_saved:
+            on_saved(asset)
+
+    save_btn.connect("clicked", _do_save)
+    spin.add_suffix(save_btn)
+    return spin
+
 
 def _wrap_chart(widget):
     """Wrap a chart widget in a plain ListBoxRow for use as ExpanderRow child."""

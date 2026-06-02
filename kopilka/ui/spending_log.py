@@ -1,13 +1,17 @@
 """Spending log view."""
 
+import csv
+import io
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 
-from gi.repository import Gtk, Adw
+from gi.repository import Gtk, Adw, GLib, Gio
 from datetime import date, timedelta
+import calendar
 
-from kopilka.ui.forms import LogSpendingDialog
+from kopilka.model.budget import ONE_TIME_CATEGORY_ID
+from kopilka.ui.forms import LogSpendingDialog, AddRecurringDialog
 
 
 def _clear_box(box):
@@ -24,6 +28,57 @@ FILTER_OPTIONS = [
     (90,  "90 days", "Show purchases from the last 3 months"),
     (365, "1 year",  "Show purchases from the last 12 months"),
 ]
+
+
+def _colored_pill(text: str, hex_color: str) -> Gtk.Label:
+    """Small label with an optional coloured background pill."""
+    lbl = Gtk.Label(label=text)
+    lbl.add_css_class("caption")
+    lbl.set_valign(Gtk.Align.CENTER)
+    if hex_color:
+        provider = Gtk.CssProvider()
+        provider.load_from_string(
+            f"label{{background:{hex_color};color:white;"
+            f"border-radius:4px;padding:1px 6px;}}"
+        )
+        lbl.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+    return lbl
+
+
+def _apply_recurring(budget) -> bool:
+    """Auto-insert any overdue recurring entries. Returns True if any were inserted."""
+    today = date.today().isoformat()
+    inserted = False
+    from kopilka.model.budget import SpendingEntry
+    for rec in budget.recurring:
+        if not rec.active:
+            continue
+        while rec.next_date <= today:
+            entry = SpendingEntry(
+                date=rec.next_date,
+                category_id=rec.category_id,
+                amount=rec.amount,
+                description=rec.description or rec.name,
+                user=rec.user,
+            )
+            budget.spending.append(entry)
+            # Advance next_date by frequency
+            d = date.fromisoformat(rec.next_date)
+            if rec.frequency == "weekly":
+                d += timedelta(days=7)
+            elif rec.frequency == "biweekly":
+                d += timedelta(days=14)
+            else:  # monthly
+                m = d.month + 1
+                y = d.year + (m - 1) // 12
+                m = (m - 1) % 12 + 1
+                try:
+                    d = d.replace(year=y, month=m)
+                except ValueError:
+                    d = d.replace(year=y, month=m, day=calendar.monthrange(y, m)[1])
+            rec.next_date = d.isoformat()
+            inserted = True
+    return inserted
 
 
 class SpendingLogView(Gtk.Box):
@@ -71,6 +126,15 @@ class SpendingLogView(Gtk.Box):
             self._filter_btns[days] = btn
         header_box.append(filter_box)
 
+        # Export CSV button
+        export_btn = Gtk.Button()
+        export_btn.set_icon_name("document-save-symbolic")
+        export_btn.set_tooltip_text("Export to CSV")
+        export_btn.add_css_class("flat")
+        export_btn.add_css_class("circular")
+        export_btn.connect("clicked", self._on_export_csv)
+        header_box.append(export_btn)
+
         add_content = Adw.ButtonContent()
         add_content.set_icon_name("list-add-symbolic")
         add_content.set_label("Log Purchase")
@@ -102,6 +166,10 @@ class SpendingLogView(Gtk.Box):
         self.refresh()
 
     def refresh(self):
+        # Auto-insert recurring entries before rendering
+        if _apply_recurring(self.budget):
+            self.on_change()
+
         _clear_box(self.list_box)
 
         cutoff = (date.today() - timedelta(days=self._filter_days)).isoformat()
@@ -111,15 +179,7 @@ class SpendingLogView(Gtk.Box):
             reverse=True,
         )
 
-        if not entries:
-            sp = Adw.StatusPage()
-            sp.set_title("No Purchases Logged")
-            sp.set_description('Tap "Log Purchase" to track your spending')
-            sp.set_icon_name("view-list-symbolic")
-            self.list_box.append(sp)
-            return
-
-        cat_map = {c.id: c.name for c in self.budget.categories}
+        cat_map   = {c.id: c for c in self.budget.categories}
         total_period = sum(e.amount for e in entries)
 
         # Period total summary row
@@ -137,6 +197,15 @@ class SpendingLogView(Gtk.Box):
         summary_row.add_suffix(total_lbl)
         summary_lb.append(summary_row)
         self.list_box.append(summary_lb)
+
+        if not entries:
+            sp = Adw.StatusPage()
+            sp.set_title("No Purchases Logged")
+            sp.set_description('Tap "Log Purchase" to track your spending')
+            sp.set_icon_name("view-list-symbolic")
+            self.list_box.append(sp)
+            self._build_recurring_section()
+            return
 
         # Group by date
         groups: dict[str, list] = {}
@@ -160,8 +229,20 @@ class SpendingLogView(Gtk.Box):
             for entry in groups[day]:
                 row = Adw.ActionRow()
                 row.set_title(entry.description or "(no description)")
-                cat_name = cat_map.get(entry.category_id, "Unknown")
-                row.set_subtitle(f"{cat_name}  ·  {entry.user}")
+
+                # Category pill with colour
+                if entry.category_id == ONE_TIME_CATEGORY_ID:
+                    cat_name  = "One-time"
+                    cat_color = ""
+                else:
+                    cat = cat_map.get(entry.category_id)
+                    cat_name  = cat.name if cat else "Unknown"
+                    cat_color = cat.color if cat else ""
+
+                pill = _colored_pill(cat_name, cat_color)
+                row.add_prefix(pill)
+
+                row.set_subtitle(entry.user)
 
                 amt = Gtk.Label(label=f"${entry.amount:,.2f}")
                 amt.add_css_class("numeric")
@@ -189,6 +270,77 @@ class SpendingLogView(Gtk.Box):
 
                 lb.append(row)
 
+        self._build_recurring_section()
+
+    def _build_recurring_section(self):
+        """Append the recurring entries management section below the log."""
+        hdr = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        hdr.set_margin_top(20)
+
+        hdr_lbl = Gtk.Label(label="Recurring Entries")
+        hdr_lbl.add_css_class("title-4")
+        hdr_lbl.set_hexpand(True)
+        hdr_lbl.set_xalign(0)
+        hdr.append(hdr_lbl)
+
+        add_rec_content = Adw.ButtonContent()
+        add_rec_content.set_icon_name("list-add-symbolic")
+        add_rec_content.set_label("Add Recurring")
+        add_rec_btn = Gtk.Button()
+        add_rec_btn.set_child(add_rec_content)
+        add_rec_btn.add_css_class("pill")
+        add_rec_btn.connect("clicked", self._on_add_recurring)
+        hdr.append(add_rec_btn)
+
+        self.list_box.append(hdr)
+
+        if not self.budget.recurring:
+            sp = Gtk.Label(label="No recurring entries")
+            sp.add_css_class("dim-label")
+            sp.add_css_class("caption")
+            sp.set_xalign(0)
+            sp.set_margin_bottom(8)
+            self.list_box.append(sp)
+            return
+
+        lb = Gtk.ListBox()
+        lb.add_css_class("boxed-list")
+        lb.set_selection_mode(Gtk.SelectionMode.NONE)
+        lb.set_margin_bottom(8)
+        self.list_box.append(lb)
+
+        cat_map = {c.id: c.name for c in self.budget.categories}
+
+        for rec in self.budget.recurring:
+            row = Adw.ActionRow()
+            row.set_title(rec.name)
+            cat_name = "One-time" if rec.category_id == ONE_TIME_CATEGORY_ID else cat_map.get(rec.category_id, "Unknown")
+            status = "active" if rec.active else "paused"
+            row.set_subtitle(f"${rec.amount:,.2f}  ·  {rec.frequency}  ·  {cat_name}  ·  next: {rec.next_date}  ·  {status}")
+
+            edit_btn = Gtk.Button()
+            edit_btn.set_icon_name("document-edit-symbolic")
+            edit_btn.set_tooltip_text("Edit")
+            edit_btn.add_css_class("flat")
+            edit_btn.add_css_class("circular")
+            edit_btn.set_valign(Gtk.Align.CENTER)
+            edit_btn.connect("clicked", self._on_edit_recurring, rec)
+            row.add_suffix(edit_btn)
+
+            del_btn = Gtk.Button()
+            del_btn.set_icon_name("edit-delete-symbolic")
+            del_btn.set_tooltip_text("Delete")
+            del_btn.add_css_class("flat")
+            del_btn.add_css_class("circular")
+            del_btn.add_css_class("destructive-action")
+            del_btn.set_valign(Gtk.Align.CENTER)
+            del_btn.connect("clicked", self._on_delete_recurring, rec)
+            row.add_suffix(del_btn)
+
+            lb.append(row)
+
+    # ── Filter ────────────────────────────────────────────────────────────────
+
     def _on_filter_toggled(self, btn, days):
         if btn.get_active():
             self._filter_days = days
@@ -197,17 +349,11 @@ class SpendingLogView(Gtk.Box):
                     b.set_active(False)
             self.refresh()
         elif not any(b.get_active() for b in self._filter_btns.values()):
-            # Don't allow deselecting all — re-activate this one
             btn.set_active(True)
 
+    # ── Add / edit spending entries ───────────────────────────────────────────
+
     def _on_add(self, _btn):
-        if not self.budget.categories:
-            dlg = Adw.AlertDialog()
-            dlg.set_heading("No Categories")
-            dlg.set_body("Create spending categories before logging purchases.")
-            dlg.add_response("ok", "OK")
-            dlg.present(self.get_root())
-            return
         LogSpendingDialog(self.budget, on_saved=self._saved).present(self.get_root())
 
     def _on_edit(self, _btn, entry):
@@ -218,6 +364,66 @@ class SpendingLogView(Gtk.Box):
         self.on_change()
         self.refresh()
 
+    # ── Recurring ─────────────────────────────────────────────────────────────
+
+    def _on_add_recurring(self, _btn):
+        AddRecurringDialog(self.budget, on_saved=self._saved_recurring).present(self.get_root())
+
+    def _on_edit_recurring(self, _btn, rec):
+        AddRecurringDialog(self.budget, on_saved=self._saved_recurring, existing=rec).present(self.get_root())
+
+    def _on_delete_recurring(self, _btn, rec):
+        self.budget.recurring.remove(rec)
+        self.on_change()
+        self.refresh()
+
+    def _saved_recurring(self, _item):
+        self.on_change()
+        self.refresh()
+
     def _saved(self, _item):
         self.on_change()
         self.refresh()
+
+    # ── Export CSV ────────────────────────────────────────────────────────────
+
+    def _on_export_csv(self, _btn):
+        dialog = Gtk.FileDialog()
+        dialog.set_title("Export Spending Log")
+        dialog.set_initial_name("spending_log.csv")
+        dialog.save(self.get_root(), None, self._export_chosen)
+
+    def _export_chosen(self, dialog, result):
+        try:
+            f = dialog.save_finish(result)
+            if not f:
+                return
+            path = f.get_path()
+        except Exception:
+            return
+
+        cat_map = {c.id: c.name for c in self.budget.categories}
+        entries = sorted(self.budget.spending, key=lambda e: e.date, reverse=True)
+
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["Date", "Category", "Amount", "Description", "Paid by"])
+        for e in entries:
+            if e.category_id == ONE_TIME_CATEGORY_ID:
+                cat_name = "One-time Purchase"
+            else:
+                cat_name = cat_map.get(e.category_id, "Unknown")
+            writer.writerow([e.date, cat_name, f"{e.amount:.2f}", e.description, e.user])
+
+        try:
+            with open(path, "w", newline="", encoding="utf-8") as fh:
+                fh.write(buf.getvalue())
+        except OSError:
+            return
+
+        from gi.repository import Adw
+        toast = Adw.Toast()
+        toast.set_title(f"Exported {len(entries)} entries")
+        root = self.get_root()
+        if hasattr(root, "add_toast"):
+            root.add_toast(toast)

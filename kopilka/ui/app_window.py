@@ -4,7 +4,8 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 
-from gi.repository import Gtk, Adw, GLib, Gio
+from gi.repository import Gtk, Adw, GLib, Gio, PangoCairo
+import importlib.resources
 
 from kopilka.ui.dashboard import Dashboard
 from kopilka.ui.views import IncomeView, ExpenseView, DebtView, CategoryView
@@ -54,8 +55,13 @@ class AppWindow(Adw.ApplicationWindow):
         self._split_view.set_max_sidebar_width(260)
         self._toast_overlay.set_child(self._split_view)
 
-        self._mono_provider = Gtk.CssProvider()
-        self._mono_provider.load_from_string("* { font-family: monospace; }")
+        self._gost_provider = Gtk.CssProvider()
+        try:
+            font_ref = importlib.resources.files("kopilka.data.fonts").joinpath("gosttypeb.ttf")
+            PangoCairo.FontMap.get_default().add_font_file(str(font_ref))
+            self._gost_provider.load_from_string("* { font-family: 'GOST type B', monospace; }")
+        except Exception:
+            self._gost_provider.load_from_string("* { font-family: monospace; }")
 
         # ── Sidebar ──────────────────────────────────────────────────────────
         sidebar_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -140,8 +146,8 @@ class AppWindow(Adw.ApplicationWindow):
         toggles_lb.append(simple_row)
 
         gost_row = Adw.ActionRow()
-        gost_row.set_title("Gost font")
-        gost_row.set_subtitle("Monospace type")
+        gost_row.set_title("Gost Type B")
+        gost_row.set_subtitle("Technical drafting typeface")
         self._gost_switch = Gtk.Switch(valign=Gtk.Align.CENTER)
         self._gost_switch.connect("notify::active", self._on_font_toggled)
         gost_row.add_suffix(self._gost_switch)
@@ -216,6 +222,16 @@ class AppWindow(Adw.ApplicationWindow):
         self._nav_listbox.select_row(self._nav_rows["dashboard"])
 
         self.connect("notify::is-active", self._on_focus_changed)
+
+        # Ctrl+Shift+L — quick log purchase from anywhere
+        log_shortcut = Gtk.Shortcut.new(
+            Gtk.ShortcutTrigger.parse_string("<Primary><Shift>l"),
+            Gtk.CallbackAction.new(self._shortcut_log_purchase),
+        )
+        shortcut_ctl = Gtk.ShortcutController()
+        shortcut_ctl.set_scope(Gtk.ShortcutScope.GLOBAL)
+        shortcut_ctl.add_shortcut(log_shortcut)
+        self.add_controller(shortcut_ctl)
 
         GLib.idle_add(self._on_startup)
 
@@ -390,16 +406,22 @@ class AppWindow(Adw.ApplicationWindow):
         except Exception:
             pass
 
+    def _shortcut_log_purchase(self, _widget, _args):
+        from kopilka.ui.forms import LogSpendingDialog
+        self._nav_listbox.select_row(self._nav_rows["log"])
+        LogSpendingDialog(self.budget, on_saved=self._on_budget_change).present(self)
+        return True
+
     def _on_font_toggled(self, switch, _param):
         display = self.get_display()
         if switch.get_active():
             Gtk.StyleContext.add_provider_for_display(
-                display, self._mono_provider,
+                display, self._gost_provider,
                 Gtk.STYLE_PROVIDER_PRIORITY_USER,
             )
         else:
             Gtk.StyleContext.remove_provider_for_display(
-                display, self._mono_provider,
+                display, self._gost_provider,
             )
 
     def _on_simple_toggled(self, switch, _param):

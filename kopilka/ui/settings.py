@@ -77,6 +77,22 @@ class SettingsView(Gtk.ScrolledWindow):
         clear_sync_btn.connect("clicked", self._on_clear_sync)
         sync_group.set_header_suffix(clear_sync_btn)
 
+        # Dashboard preferences
+        dash_group = Adw.PreferencesGroup()
+        dash_group.set_title("Dashboard")
+        page.add(dash_group)
+
+        self._bills_spin = Adw.SpinRow.new_with_range(1, 90, 1)
+        self._bills_spin.set_title("Upcoming bills look-ahead (days)")
+        self._bills_spin.set_subtitle("How many days ahead to show bills in the dashboard")
+        self._bills_spin.set_digits(0)
+        self._bills_spin.set_value(getattr(budget, "bills_look_ahead_days", 7))
+        self._bills_spin.set_tooltip_text(
+            "Bills due within this many days appear in the dashboard reminder section."
+        )
+        self._bills_spin.connect("notify::value", self._on_bills_lookhead_changed)
+        dash_group.add(self._bills_spin)
+
         # Danger group
         danger_group = Adw.PreferencesGroup()
         danger_group.set_title("Data")
@@ -133,6 +149,10 @@ class SettingsView(Gtk.ScrolledWindow):
                 self.get_root().add_toast(toast)
         except GLib.Error:
             pass
+
+    def _on_bills_lookhead_changed(self, spin, _param):
+        self.budget.bills_look_ahead_days = int(spin.get_value())
+        self.on_change()
 
     def _on_clear_sync(self, _btn):
         self.budget.sync_path = ""

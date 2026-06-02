@@ -8,7 +8,13 @@ from gi.repository import Gtk, Adw
 
 from kopilka.logic.calculations import BudgetCalculator
 from kopilka.ui.forms import AddIncomeDialog, AddExpenseDialog, AddDebtDialog, AddCategoryDialog
-from datetime import date
+from datetime import date, timedelta
+
+
+def _ordinal(n: int) -> str:
+    if 11 <= n % 100 <= 13:
+        return "th"
+    return {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
 
 
 def _num_lbl(text, css=""):
@@ -160,6 +166,16 @@ class IncomeView(Gtk.Box):
             row = Adw.ActionRow()
             row.set_title(inc.name)
             parts = [inc.owner, inc.frequency]
+            if inc.frequency == "biweekly":
+                payday = BudgetCalculator.next_biweekly_payday(getattr(inc, "next_payday", ""))
+                if payday:
+                    days = (payday - date.today()).days
+                    if days == 0:
+                        parts.append("payday today")
+                    elif days == 1:
+                        parts.append("payday tomorrow")
+                    else:
+                        parts.append(f"payday {payday.strftime('%-d %b')} ({days}d)")
             if inc.is_taxed:
                 cpp_ei = getattr(inc, "cpp_ei_applicable", True)
                 parts.append("tax + CPP/EI" if cpp_ei else "tax only")
@@ -245,6 +261,20 @@ class ExpenseView(Gtk.Box):
             row = Adw.ActionRow()
             row.set_title(exp.name)
             parts = [exp.frequency]
+            # Human-readable due date hint
+            freq = exp.frequency
+            due_day     = getattr(exp, "due_day",     0)
+            due_weekday = getattr(exp, "due_weekday", -1)
+            due_doy     = getattr(exp, "due_doy",     0)
+            _WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+            if freq == "weekly" and due_weekday >= 0:
+                parts.append(f"due {_WEEKDAY_NAMES[due_weekday]}s")
+            elif freq == "yearly" and due_doy > 0:
+                import datetime as _dt
+                _d = _dt.date(2024, 1, 1) + _dt.timedelta(days=due_doy - 1)
+                parts.append(f"due {_d.strftime('%-d %b')}")
+            elif due_day > 0:
+                parts.append(f"due {due_day}{_ordinal(due_day)}")
             if not exp.active:
                 parts.append("inactive")
             if exp.notes:
@@ -564,15 +594,60 @@ class CategoryView(Gtk.Box):
         lb = _make_listbox()
         self.content.append(lb)
 
+        today = date.today()
+        week_start  = today - timedelta(days=today.weekday())
+        month_start = today.replace(day=1)
+        sem_start   = date(today.year, 1, 1) if today.month <= 6 else date(today.year, 7, 1)
+        year_start  = date(today.year, 1, 1)
+
         for cat in self.budget.categories:
+            effective = BudgetCalculator.category_effective_budget(cat, self.budget.spending, today)
+
+            if cat.budget_period == "weekly":
+                period_start = week_start
+                period_label = "wk"
+            elif cat.budget_period == "semesterly":
+                period_start = sem_start
+                period_label = "sem"
+            elif cat.budget_period == "yearly":
+                period_start = year_start
+                period_label = "yr"
+            else:
+                period_start = month_start
+                period_label = "mo"
+
+            period_spent = sum(
+                e.amount for e in self.budget.spending
+                if e.category_id == cat.id and e.date >= period_start.isoformat()
+            )
+
             row = Adw.ActionRow()
             row.set_title(cat.name)
             shared = "Shared" if cat.shared else "Personal"
-            row.set_subtitle(
-                f"{shared}  ·  "
-                f"${cat.budget_amount:,.2f}/{cat.budget_period}"
-                f"  (${cat.budget_monthly:,.2f}/month)"
-            )
+            this_month = cat.budget_for_month(today.month)
+            subtitle = f"{shared}  ·  ${cat.budget_amount:,.2f}/{cat.budget_period}  ·  ${period_spent:,.2f} of ${effective:,.2f}/{period_label}"
+            if abs(this_month - cat.budget_monthly) > 0.01:
+                subtitle += f"  ·  ${this_month:,.2f}/mo this month"
+            row.set_subtitle(subtitle)
+
+            if effective > 0:
+                pct = min(period_spent / effective, 1.0)
+                bar = Gtk.ProgressBar()
+                bar.set_fraction(pct)
+                bar.set_valign(Gtk.Align.CENTER)
+                bar.set_size_request(90, -1)
+                bar.set_tooltip_text(f"${period_spent:,.2f} of ${effective:,.2f} — {pct*100:.0f}%")
+                bar.update_property(
+                    [Gtk.AccessibleProperty.LABEL],
+                    [f"{cat.name}: {pct*100:.0f}% of {period_label} budget used"],
+                )
+                for cls in ("error", "warning"):
+                    bar.remove_css_class(cls)
+                if pct >= 1.0:
+                    bar.add_css_class("error")
+                elif pct >= 0.8:
+                    bar.add_css_class("warning")
+                row.add_suffix(bar)
 
             edit_btn = _icon_button("document-edit-symbolic", "Edit")
             edit_btn.connect("clicked", self._on_edit, cat)
@@ -584,13 +659,12 @@ class CategoryView(Gtk.Box):
 
             lb.append(row)
 
-        # Allocation summary
-        from kopilka.logic.calculations import BudgetCalculator
+        # Allocation summary — use current month so overrides are reflected
         allocated = BudgetCalculator.monthly_category_budgets(self.budget)
         unallocated = BudgetCalculator.unallocated_discretionary(self.budget)
 
         summary = Adw.ActionRow()
-        summary.set_title("Allocated")
+        summary.set_title("Allocated this month")
         alloc_lbl = Gtk.Label(label=f"${allocated:,.2f}/month")
         alloc_lbl.add_css_class("numeric")
         alloc_lbl.set_valign(Gtk.Align.CENTER)
@@ -598,7 +672,7 @@ class CategoryView(Gtk.Box):
         lb.append(summary)
 
         unalloc = Adw.ActionRow()
-        unalloc.set_title("Unallocated")
+        unalloc.set_title("Unallocated this month")
         unalloc_lbl = Gtk.Label(label=f"${unallocated:,.2f}/month")
         unalloc_lbl.add_css_class("numeric")
         unalloc_lbl.add_css_class("success" if unallocated >= 0 else "error")

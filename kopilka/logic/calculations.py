@@ -126,13 +126,15 @@ class BudgetCalculator:
                 - BudgetCalculator.monthly_debt_payments(budget))
 
     @staticmethod
-    def monthly_category_budgets(budget) -> float:
-        return sum(c.budget_monthly for c in budget.categories)
+    def monthly_category_budgets(budget, month: int | None = None) -> float:
+        if month is None:
+            month = date.today().month
+        return sum(c.budget_for_month(month) for c in budget.categories)
 
     @staticmethod
-    def unallocated_discretionary(budget) -> float:
+    def unallocated_discretionary(budget, month: int | None = None) -> float:
         return (BudgetCalculator.available_to_spend(budget)
-                - BudgetCalculator.monthly_category_budgets(budget))
+                - BudgetCalculator.monthly_category_budgets(budget, month))
 
     # ── One-time items ───────────────────────────────────────────────────────
 
@@ -249,7 +251,20 @@ class BudgetCalculator:
             / math.log(1 + monthly_rate)
         ) if monthly_rate > 0 else math.ceil(balance / monthly_payment)
 
-        total_interest = monthly_payment * months - balance
+        # Simulate amortization to get exact interest (avoids overcounting the
+        # partial last payment that math.ceil introduces).
+        if monthly_rate == 0:
+            total_interest = 0.0
+        else:
+            b = balance
+            total_paid = 0.0
+            for _ in range(months):
+                interest_charge = b * monthly_rate
+                payment = min(monthly_payment, b + interest_charge)
+                total_paid += payment
+                b = b + interest_charge - payment
+            total_interest = max(0.0, total_paid - balance)
+
         today = date.today()
         m = today.month - 1 + months
         payoff_date = date(today.year + m // 12, m % 12 + 1, 1)
@@ -292,25 +307,89 @@ class BudgetCalculator:
         )
         return result, total_interest
 
+    # ── One-time purchase pool ───────────────────────────────────────────────
+
+    @staticmethod
+    def yearly_one_time_spending(budget) -> float:
+        """Sum of spending entries logged under the one-time purchases sentinel."""
+        from kopilka.model.budget import ONE_TIME_CATEGORY_ID
+        year_start = date(date.today().year, 1, 1).isoformat()
+        return sum(
+            e.amount for e in budget.spending
+            if e.category_id == ONE_TIME_CATEGORY_ID and e.date >= year_start
+        )
+
+    @staticmethod
+    def next_biweekly_payday(reference_date_str: str):
+        """Return the next upcoming biweekly payday given an ISO reference date, or None."""
+        if not reference_date_str:
+            return None
+        try:
+            ref = date.fromisoformat(reference_date_str)
+        except ValueError:
+            return None
+        today = date.today()
+        while ref < today:
+            ref += timedelta(days=14)
+        return ref
+
     # ── Bill reminders ───────────────────────────────────────────────────────
 
     @staticmethod
     def bills_due_soon(budget, days_ahead: int = 7) -> list:
-        """Return FixedExpense items with due_day falling within the next N days."""
+        """Return FixedExpense items due within the next N days."""
+        from datetime import timedelta
         today  = date.today()
         result = []
         for exp in budget.expenses_fixed:
-            due = getattr(exp, "due_day", 0)
-            if not exp.active or due == 0 or exp.frequency == "once":
+            if not exp.active or exp.frequency == "once":
                 continue
-            # Find the next occurrence this month or next
-            try:
-                due_date = today.replace(day=due)
-            except ValueError:
-                continue   # e.g. due_day=31 in February
-            if due_date < today:
-                total = today.year * 12 + today.month
-                due_date = date(total // 12, total % 12 + 1, due)
+
+            freq       = exp.frequency
+            due_day    = getattr(exp, "due_day", 0)
+            due_weekday = getattr(exp, "due_weekday", -1)
+            due_doy    = getattr(exp, "due_doy", 0)
+
+            due_date = None
+
+            if freq == "weekly":
+                if due_weekday < 0:
+                    continue
+                # Find next occurrence of the target weekday (today included)
+                days_ahead_wd = (due_weekday - today.weekday()) % 7
+                due_date = today + timedelta(days=days_ahead_wd)
+
+            elif freq == "yearly":
+                if due_doy == 0:
+                    continue
+                try:
+                    candidate = date(today.year, 1, 1) + timedelta(days=due_doy - 1)
+                except ValueError:
+                    continue
+                if candidate < today:
+                    try:
+                        candidate = date(today.year + 1, 1, 1) + timedelta(days=due_doy - 1)
+                    except ValueError:
+                        continue
+                due_date = candidate
+
+            else:
+                # monthly / biweekly / semesterly — use day-of-month
+                if due_day == 0:
+                    continue
+                try:
+                    due_date = today.replace(day=due_day)
+                except ValueError:
+                    continue   # e.g. due_day=31 in February
+                if due_date < today:
+                    total = today.year * 12 + today.month
+                    try:
+                        due_date = date(total // 12, total % 12 + 1, due_day)
+                    except ValueError:
+                        continue
+
+            if due_date is None:
+                continue
             days_until = (due_date - today).days
             if 0 <= days_until <= days_ahead:
                 result.append((exp, due_date, days_until))
@@ -334,19 +413,3 @@ class BudgetCalculator:
     @staticmethod
     def _to_annual(amount: float, frequency: str) -> float:
         return BudgetCalculator._to_monthly(amount, frequency) * 12
-
-    @staticmethod
-    def one_time_income_in_period(budget, start: date, end: date) -> float:
-        return sum(
-            i.amount for i in budget.income
-            if i.frequency == "once" and i.active and i.date
-            and start.isoformat() <= i.date <= end.isoformat()
-        )
-
-    @staticmethod
-    def one_time_expenses_in_period(budget, start: date, end: date) -> float:
-        return sum(
-            e.amount for e in budget.expenses_fixed
-            if e.frequency == "once" and e.active and e.date
-            and start.isoformat() <= e.date <= end.isoformat()
-        )

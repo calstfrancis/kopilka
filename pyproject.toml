@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kopilka"
-version = "0.2.0"
+version = "0.3.0"
 description = "Kopilka — couples budget planner with shared finance management"
 readme = "README.md"
 license = {text = "GPL-3.0"}
@@ -26,7 +26,7 @@ dev = [
 kopilka = "kopilka.kopilka:main"
 
 [tool.setuptools]
-packages = ["kopilka", "kopilka.ui", "kopilka.model", "kopilka.logic", "kopilka.storage"]
+packages = ["kopilka", "kopilka.ui", "kopilka.model", "kopilka.logic", "kopilka.storage", "kopilka.data", "kopilka.data.fonts"]
 
 [tool.setuptools.package-data]
-kopilka = ["data/*"]
+kopilka = ["data/*", "data/fonts/*"]

@@ -7,7 +7,10 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw
 from datetime import date
 
-from kopilka.model.budget import IncomeSource, FixedExpense, Debt, SpendingCategory, SpendingEntry
+from kopilka.model.budget import (
+    IncomeSource, FixedExpense, Debt, SpendingCategory, SpendingEntry,
+    RecurringEntry, ONE_TIME_CATEGORY_ID, CATEGORY_COLORS,
+)
 from kopilka.logic.calculations import BudgetCalculator
 
 
@@ -100,6 +103,16 @@ class AddIncomeDialog(Adw.Dialog):
         self.date_row.set_tooltip_text("Date the one-time payment was received")
         group.add(self.date_row)
 
+        self.payday_row = Adw.EntryRow()
+        self.payday_row.set_title("Reference Payday (YYYY-MM-DD)")
+        self.payday_row.set_subtitle("Any past payday — used to compute upcoming paydays")
+        self.payday_row.set_tooltip_text(
+            "Enter any date when you were paid. The app uses this to compute "
+            "the next upcoming payday by adding 14-day intervals."
+        )
+        self.payday_row.set_visible(False)
+        group.add(self.payday_row)
+
         self.freq_row.connect("notify::selected", self._on_freq_changed_income)
 
         self.taxed_row = Adw.SwitchRow()
@@ -141,6 +154,8 @@ class AddIncomeDialog(Adw.Dialog):
                 self.freq_row.set_selected(idx)
             if existing.date:
                 self.date_row.set_text(existing.date)
+            if getattr(existing, "next_payday", ""):
+                self.payday_row.set_text(existing.next_payday)
             self.taxed_row.set_active(existing.is_taxed)
             self.cpp_ei_row.set_active(getattr(existing, "cpp_ei_applicable", True))
             self.active_row.set_active(existing.active)
@@ -150,15 +165,19 @@ class AddIncomeDialog(Adw.Dialog):
         self._on_freq_changed_income()
 
     def _on_freq_changed_income(self, *_args):
-        is_once = FREQUENCIES[self.freq_row.get_selected()] == "once"
+        freq = FREQUENCIES[self.freq_row.get_selected()]
+        is_once = freq == "once"
+        is_biweekly = freq == "biweekly"
         self.date_row.set_visible(is_once)
+        self.payday_row.set_visible(is_biweekly)
         self.cpp_ei_row.set_sensitive(self.taxed_row.get_active() and not is_once)
         if is_once:
             self.cpp_ei_row.set_active(False)
 
     def _on_taxed_toggled(self, *_args):
         taxed = self.taxed_row.get_active()
-        self.cpp_ei_row.set_sensitive(taxed)
+        is_once = FREQUENCIES[self.freq_row.get_selected()] == "once"
+        self.cpp_ei_row.set_sensitive(taxed and not is_once)
         if not taxed:
             self.cpp_ei_row.set_active(False)
 
@@ -177,6 +196,7 @@ class AddIncomeDialog(Adw.Dialog):
         cpp_ei = self.cpp_ei_row.get_active()
 
         item_date = self.date_row.get_text().strip() if frequency == "once" else ""
+        next_payday = self.payday_row.get_text().strip() if frequency == "biweekly" else ""
 
         if self.existing:
             self.existing.name = name
@@ -188,6 +208,7 @@ class AddIncomeDialog(Adw.Dialog):
             self.existing.active = self.active_row.get_active()
             self.existing.notes = self.notes_row.get_text().strip()
             self.existing.date = item_date
+            self.existing.next_payday = next_payday
             item = self.existing
         else:
             item = IncomeSource(
@@ -200,6 +221,7 @@ class AddIncomeDialog(Adw.Dialog):
                 active=self.active_row.get_active(),
                 notes=self.notes_row.get_text().strip(),
                 date=item_date,
+                next_payday=next_payday,
             )
             self.budget.income.append(item)
 
@@ -255,6 +277,52 @@ class AddExpenseDialog(Adw.Dialog):
         self.exp_date_row.set_visible(False)
         group.add(self.exp_date_row)
 
+        # Due-date rows — only one is shown at a time depending on frequency
+        self.due_day_row = Adw.SpinRow.new_with_range(0, 31, 1)
+        self.due_day_row.set_title("Due on day of month")
+        self.due_day_row.set_subtitle("0 = no reminder")
+        self.due_day_row.set_tooltip_text(
+            "Day of the month this bill is due (e.g. 15 for the 15th). "
+            "Set to 0 to skip the upcoming-bills reminder."
+        )
+        self.due_day_row.set_digits(0)
+        group.add(self.due_day_row)
+
+        self.due_weekday_row = Adw.ComboRow()
+        self.due_weekday_row.set_title("Due on day of week")
+        self.due_weekday_row.set_tooltip_text(
+            "Which day of the week this bill is due. "
+            "Used for the upcoming-bills reminder."
+        )
+        wd_model = Gtk.StringList()
+        for day in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]:
+            wd_model.append(day)
+        self.due_weekday_row.set_model(wd_model)
+        self.due_weekday_row.set_visible(False)
+        group.add(self.due_weekday_row)
+
+        self.due_doy_month_row = Adw.ComboRow()
+        self.due_doy_month_row.set_title("Due month")
+        self.due_doy_month_row.set_tooltip_text("Month the yearly bill falls in")
+        doy_month_model = Gtk.StringList()
+        for m in ["January", "February", "March", "April", "May", "June",
+                  "July", "August", "September", "October", "November", "December"]:
+            doy_month_model.append(m)
+        self.due_doy_month_row.set_model(doy_month_model)
+        self.due_doy_month_row.set_visible(False)
+        group.add(self.due_doy_month_row)
+
+        self.due_doy_day_row = Adw.SpinRow.new_with_range(0, 31, 1)
+        self.due_doy_day_row.set_title("Due day of month (yearly)")
+        self.due_doy_day_row.set_subtitle("0 = no reminder")
+        self.due_doy_day_row.set_tooltip_text(
+            "Day within the selected month this yearly bill is due. "
+            "Set to 0 to skip the upcoming-bills reminder."
+        )
+        self.due_doy_day_row.set_digits(0)
+        self.due_doy_day_row.set_visible(False)
+        group.add(self.due_doy_day_row)
+
         self.freq_row.connect("notify::selected", self._on_freq_changed_exp)
 
         self.active_row = Adw.SwitchRow()
@@ -273,14 +341,33 @@ class AddExpenseDialog(Adw.Dialog):
                 self.freq_row.set_selected(FREQUENCIES.index(existing.frequency))
             if existing.date:
                 self.exp_date_row.set_text(existing.date)
+            self.due_day_row.set_value(getattr(existing, "due_day", 0))
+            wd = getattr(existing, "due_weekday", -1)
+            self.due_weekday_row.set_selected(wd if wd >= 0 else 0)
+            doy = getattr(existing, "due_doy", 0)
+            if doy > 0:
+                import datetime
+                try:
+                    d = datetime.date(2024, 1, 1) + datetime.timedelta(days=doy - 1)
+                    self.due_doy_month_row.set_selected(d.month - 1)
+                    self.due_doy_day_row.set_value(d.day)
+                except Exception:
+                    pass
             self.active_row.set_active(existing.active)
             self.notes_row.set_text(existing.notes or "")
 
         self._on_freq_changed_exp()
 
     def _on_freq_changed_exp(self, *_args):
-        is_once = FREQUENCIES[self.freq_row.get_selected()] == "once"
+        freq = FREQUENCIES[self.freq_row.get_selected()]
+        is_once   = freq == "once"
+        is_weekly = freq == "weekly"
+        is_yearly = freq == "yearly"
         self.exp_date_row.set_visible(is_once)
+        self.due_weekday_row.set_visible(is_weekly and not is_once)
+        self.due_doy_month_row.set_visible(is_yearly)
+        self.due_doy_day_row.set_visible(is_yearly)
+        self.due_day_row.set_visible(not is_once and not is_weekly and not is_yearly)
 
     def _on_save(self, _btn):
         name = self.name_row.get_text().strip()
@@ -293,6 +380,22 @@ class AddExpenseDialog(Adw.Dialog):
         frequency = FREQUENCIES[self.freq_row.get_selected()]
         item_date = self.exp_date_row.get_text().strip() if frequency == "once" else ""
 
+        due_day = 0
+        due_weekday = -1
+        due_doy = 0
+        if frequency == "weekly":
+            due_weekday = self.due_weekday_row.get_selected()  # 0=Mon…6=Sun
+        elif frequency == "yearly":
+            import datetime, calendar
+            month = self.due_doy_month_row.get_selected() + 1  # 1-12
+            day   = int(self.due_doy_day_row.get_value())
+            if day > 0:
+                max_day = calendar.monthrange(2024, month)[1]
+                day = min(day, max_day)
+                due_doy = (datetime.date(2024, month, day) - datetime.date(2024, 1, 1)).days + 1
+        elif frequency != "once":
+            due_day = int(self.due_day_row.get_value())
+
         if self.existing:
             self.existing.name = name
             self.existing.amount = amount
@@ -300,6 +403,9 @@ class AddExpenseDialog(Adw.Dialog):
             self.existing.active = self.active_row.get_active()
             self.existing.notes = self.notes_row.get_text().strip()
             self.existing.date = item_date
+            self.existing.due_day = due_day
+            self.existing.due_weekday = due_weekday
+            self.existing.due_doy = due_doy
             item = self.existing
         else:
             item = FixedExpense(
@@ -309,6 +415,9 @@ class AddExpenseDialog(Adw.Dialog):
                 active=self.active_row.get_active(),
                 notes=self.notes_row.get_text().strip(),
                 date=item_date,
+                due_day=due_day,
+                due_weekday=due_weekday,
+                due_doy=due_doy,
             )
             self.budget.expenses_fixed.append(item)
 
@@ -494,6 +603,56 @@ class AddCategoryDialog(Adw.Dialog):
         self.budget_row.connect("notify::value", self._update_remaining)
         self.period_row.connect("notify::selected", self._update_remaining)
 
+        # ── Colour picker ─────────────────────────────────────────────────────
+        color_group = Adw.PreferencesGroup()
+        color_group.set_title("Category Colour")
+        page.add(color_group)
+
+        color_row = Adw.ActionRow()
+        color_row.set_title("Colour pill")
+        color_row.set_tooltip_text("Colour shown as a pill label in the spending log")
+        color_group.add(color_row)
+
+        color_box = Gtk.Box(spacing=4, valign=Gtk.Align.CENTER)
+        self._selected_color = existing.color if existing else ""
+        self._color_btns: dict[str, Gtk.ToggleButton] = {}
+
+        none_btn = Gtk.ToggleButton()
+        none_btn.set_label("—")
+        none_btn.set_active(not self._selected_color)
+        none_btn.set_tooltip_text("No colour")
+        none_btn.set_size_request(28, 28)
+        color_box.append(none_btn)
+        self._color_btns[""] = none_btn
+
+        for hex_c in CATEGORY_COLORS:
+            btn = Gtk.ToggleButton()
+            btn.set_size_request(28, 28)
+            btn.set_active(hex_c == self._selected_color)
+            btn.set_tooltip_text(hex_c)
+            _prov = Gtk.CssProvider()
+            _prov.load_from_string(
+                f"button{{background:{hex_c};min-width:22px;min-height:22px;border-radius:4px;}}"
+                f"button:checked{{box-shadow:0 0 0 2px @window_bg_color,0 0 0 4px {hex_c};}}"
+            )
+            btn.get_style_context().add_provider(_prov, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+            color_box.append(btn)
+            self._color_btns[hex_c] = btn
+
+        def _on_color_toggled(btn, color):
+            if btn.get_active():
+                self._selected_color = color
+                for c, b in self._color_btns.items():
+                    if b is not btn:
+                        b.set_active(False)
+            elif not any(b.get_active() for b in self._color_btns.values()):
+                btn.set_active(True)
+
+        for color, btn in self._color_btns.items():
+            btn.connect("toggled", _on_color_toggled, color)
+
+        color_row.add_suffix(color_box)
+
         # ── Rollover policies ─────────────────────────────────────────────────
         rollover_group = Adw.PreferencesGroup()
         rollover_group.set_title("Cycle Rollover")
@@ -634,6 +793,7 @@ class AddCategoryDialog(Adw.Dialog):
             self.existing.deficit_policy = deficit_policy
             self.existing.deficit_amortize_cycles = amortize_cycles
             self.existing.monthly_overrides = overrides
+            self.existing.color = self._selected_color
             item = self.existing
         else:
             item = SpendingCategory(
@@ -645,6 +805,7 @@ class AddCategoryDialog(Adw.Dialog):
                 deficit_policy=deficit_policy,
                 deficit_amortize_cycles=amortize_cycles,
                 monthly_overrides=overrides,
+                color=self._selected_color,
             )
             self.budget.categories.append(item)
 
@@ -688,6 +849,9 @@ class LogSpendingDialog(Adw.Dialog):
         self.cat_row.set_title("Category")
         cat_model = Gtk.StringList()
         self._cat_ids = []
+        # One-time purchase is always the first option
+        cat_model.append("One-time Purchase (annual pool)")
+        self._cat_ids.append(ONE_TIME_CATEGORY_ID)
         for c in budget.categories:
             cat_model.append(c.name)
             self._cat_ids.append(c.id)
@@ -753,6 +917,142 @@ class LogSpendingDialog(Adw.Dialog):
                 user=user,
             )
             self.budget.spending.append(item)
+
+        if self.on_saved:
+            self.on_saved(item)
+        self.close()
+
+
+# ---------------------------------------------------------------------------
+# Recurring Entry
+# ---------------------------------------------------------------------------
+
+RECURRING_FREQS       = ["weekly", "biweekly", "monthly"]
+RECURRING_FREQ_LABELS = ["Weekly", "Bi-weekly", "Monthly"]
+
+
+class AddRecurringDialog(Adw.Dialog):
+    def __init__(self, budget, on_saved=None, existing=None):
+        super().__init__()
+        self.budget   = budget
+        self.on_saved = on_saved
+        self.existing = existing
+
+        self.set_title("Edit Recurring" if existing else "Add Recurring Entry")
+        self.set_content_width(440)
+
+        toolbar_view = _build_toolbar_view(self.get_title(), self._on_save)
+        self.set_child(toolbar_view)
+
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_propagate_natural_height(True)
+        toolbar_view.set_content(scroll)
+
+        page  = Adw.PreferencesPage()
+        group = Adw.PreferencesGroup()
+        page.add(group)
+        scroll.set_child(page)
+
+        self.name_row = Adw.EntryRow()
+        self.name_row.set_title("Name")
+        self.name_row.set_tooltip_text("Label shown before the entry is inserted")
+        group.add(self.name_row)
+
+        self.cat_row = Adw.ComboRow()
+        self.cat_row.set_title("Category")
+        cat_model = Gtk.StringList()
+        self._cat_ids = [ONE_TIME_CATEGORY_ID]
+        cat_model.append("One-time Purchase (annual pool)")
+        for c in budget.categories:
+            cat_model.append(c.name)
+            self._cat_ids.append(c.id)
+        self.cat_row.set_model(cat_model)
+        group.add(self.cat_row)
+
+        self.amount_row = Adw.SpinRow.new_with_range(0, 9_999_999, 0.01)
+        self.amount_row.set_title("Amount ($)")
+        self.amount_row.set_digits(2)
+        group.add(self.amount_row)
+
+        self.desc_row = Adw.EntryRow()
+        self.desc_row.set_title("Description")
+        group.add(self.desc_row)
+
+        self.user_row = Adw.ComboRow()
+        self.user_row.set_title("Who paid?")
+        user_model = Gtk.StringList()
+        for u in budget.couple:
+            user_model.append(u)
+        self.user_row.set_model(user_model)
+        group.add(self.user_row)
+
+        self.freq_row = Adw.ComboRow()
+        self.freq_row.set_title("Frequency")
+        freq_model = Gtk.StringList()
+        for lbl in RECURRING_FREQ_LABELS:
+            freq_model.append(lbl)
+        self.freq_row.set_model(freq_model)
+        self.freq_row.set_selected(2)  # monthly default
+        group.add(self.freq_row)
+
+        self.next_date_row = Adw.EntryRow()
+        self.next_date_row.set_title("Next insertion date (YYYY-MM-DD)")
+        self.next_date_row.set_text(date.today().isoformat())
+        self.next_date_row.set_tooltip_text(
+            "The entry will be auto-inserted on or after this date when you open the spending log."
+        )
+        group.add(self.next_date_row)
+
+        self.active_row = Adw.SwitchRow()
+        self.active_row.set_title("Active")
+        self.active_row.set_active(True)
+        group.add(self.active_row)
+
+        if existing:
+            self.name_row.set_text(existing.name)
+            if existing.category_id in self._cat_ids:
+                self.cat_row.set_selected(self._cat_ids.index(existing.category_id))
+            self.amount_row.set_value(existing.amount)
+            self.desc_row.set_text(existing.description or "")
+            if existing.user in budget.couple:
+                self.user_row.set_selected(budget.couple.index(existing.user))
+            if existing.frequency in RECURRING_FREQS:
+                self.freq_row.set_selected(RECURRING_FREQS.index(existing.frequency))
+            self.next_date_row.set_text(existing.next_date)
+            self.active_row.set_active(existing.active)
+
+    def _on_save(self, _btn):
+        name = self.name_row.get_text().strip()
+        if not name:
+            self.name_row.add_css_class("error")
+            return
+        self.name_row.remove_css_class("error")
+
+        cat_id      = self._cat_ids[self.cat_row.get_selected()]
+        amount      = self.amount_row.get_value()
+        description = self.desc_row.get_text().strip()
+        user        = self.budget.couple[self.user_row.get_selected()]
+        frequency   = RECURRING_FREQS[self.freq_row.get_selected()]
+        next_date   = self.next_date_row.get_text().strip() or date.today().isoformat()
+        active      = self.active_row.get_active()
+
+        if self.existing:
+            self.existing.name        = name
+            self.existing.category_id = cat_id
+            self.existing.amount      = amount
+            self.existing.description = description
+            self.existing.user        = user
+            self.existing.frequency   = frequency
+            self.existing.next_date   = next_date
+            self.existing.active      = active
+            item = self.existing
+        else:
+            item = RecurringEntry(
+                name=name, category_id=cat_id, amount=amount,
+                description=description, user=user,
+                frequency=frequency, next_date=next_date, active=active,
+            )
+            self.budget.recurring.append(item)
 
         if self.on_saved:
             self.on_saved(item)
