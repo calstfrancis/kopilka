@@ -1,6 +1,10 @@
-# Budget data (keep private, sync via pCloud)
+# Budget and config data (keep private — config.json contains WebDAV credentials)
 budget.json
 budget*.json
+config.json
+
+# Claude Code local settings (machine-specific paths, not secrets but not repo material)
+.claude/settings.local.json
 
 # Python
 __pycache__/
