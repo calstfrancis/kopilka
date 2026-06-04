@@ -314,10 +314,11 @@ class Dashboard(Gtk.Box):
                 if e.category_id == cat.id and e.date >= period_start.isoformat()
             )
             period_budget = effective
+            remaining = period_budget - period_spent
 
             row = Adw.ActionRow()
             row.set_title(cat.name)
-            subtitle = f"${period_spent:,.2f} of ${period_budget:,.2f}/{period_label}"
+            subtitle = f"${period_spent:,.2f} spent of ${period_budget:,.2f}/{period_label}"
             if abs(rollover) > 0.01:
                 sign = "+" if rollover > 0 else "−"
                 subtitle += f"  ·  rollover {sign}${abs(rollover):,.2f}"
@@ -344,7 +345,13 @@ class Dashboard(Gtk.Box):
                     bar.add_css_class("warning")
                 row.add_suffix(bar)
 
-            row.add_suffix(_make_amount_label(f"${period_spent:,.2f}", "caption"))
+            if remaining < 0:
+                rem_lbl = _make_amount_label(f"−${abs(remaining):,.2f} over", "error")
+            elif remaining == 0:
+                rem_lbl = _make_amount_label("$0.00 left", "warning")
+            else:
+                rem_lbl = _make_amount_label(f"${remaining:,.2f} left", "success")
+            row.add_suffix(rem_lbl)
 
             self.cat_group.add(row)
             self._cat_rows.append(row)

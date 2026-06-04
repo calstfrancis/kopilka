@@ -108,17 +108,3 @@ def is_first_launch() -> bool:
     return "user1_name" not in config
 
 
-def sync_to_pcloud(budget) -> bool:
-    """Copy budget JSON to pCloud sync path if configured."""
-    if not budget.sync_path:
-        return False
-    try:
-        import shutil
-        local_path = get_budget_path()
-        dest = Path(budget.sync_path) / "budget.json"
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(local_path, dest)
-        return True
-    except Exception as e:
-        print(f"Sync error: {e}")
-        return False

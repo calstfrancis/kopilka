@@ -105,7 +105,6 @@ class AddIncomeDialog(Adw.Dialog):
 
         self.payday_row = Adw.EntryRow()
         self.payday_row.set_title("Reference Payday (YYYY-MM-DD)")
-        self.payday_row.set_subtitle("Any past payday — used to compute upcoming paydays")
         self.payday_row.set_tooltip_text(
             "Enter any date when you were paid. The app uses this to compute "
             "the next upcoming payday by adding 14-day intervals."
@@ -242,13 +241,14 @@ class AddExpenseDialog(Adw.Dialog):
         self.existing = existing
 
         self.set_title("Edit Expense" if existing else "Add Expense")
-        self.set_content_width(440)
+        self.set_content_width(480)
+        self.set_content_height(560)
 
         toolbar_view = _build_toolbar_view(self.get_title(), self._on_save)
         self.set_child(toolbar_view)
 
         scroll = Gtk.ScrolledWindow()
-        scroll.set_propagate_natural_height(True)
+        scroll.set_vexpand(True)
         toolbar_view.set_content(scroll)
 
         page = Adw.PreferencesPage()
@@ -533,13 +533,14 @@ class AddCategoryDialog(Adw.Dialog):
         self.existing = existing
 
         self.set_title("Edit Category" if existing else "Add Category")
-        self.set_content_width(440)
+        self.set_content_width(690)
+        self.set_content_height(660)
 
         toolbar_view = _build_toolbar_view(self.get_title(), self._on_save)
         self.set_child(toolbar_view)
 
         scroll = Gtk.ScrolledWindow()
-        scroll.set_propagate_natural_height(True)
+        scroll.set_vexpand(True)
         toolbar_view.set_content(scroll)
 
         page = Adw.PreferencesPage()
@@ -608,36 +609,33 @@ class AddCategoryDialog(Adw.Dialog):
         color_group.set_title("Category Colour")
         page.add(color_group)
 
-        color_row = Adw.ActionRow()
-        color_row.set_title("Colour pill")
-        color_row.set_tooltip_text("Colour shown as a pill label in the spending log")
-        color_group.add(color_row)
-
-        color_box = Gtk.Box(spacing=4, valign=Gtk.Align.CENTER)
         self._selected_color = existing.color if existing else ""
         self._color_btns: dict[str, Gtk.ToggleButton] = {}
 
-        none_btn = Gtk.ToggleButton()
-        none_btn.set_label("—")
-        none_btn.set_active(not self._selected_color)
-        none_btn.set_tooltip_text("No colour")
-        none_btn.set_size_request(28, 28)
-        color_box.append(none_btn)
-        self._color_btns[""] = none_btn
-
-        for hex_c in CATEGORY_COLORS:
+        # Build colour swatches in a single row (none + 13 colours)
+        all_colors = [("", "No colour")] + [(c, c) for c in CATEGORY_COLORS]
+        row_box = Gtk.Box(spacing=4, margin_top=8, margin_bottom=8,
+                          margin_start=12, margin_end=12)
+        for hex_c, tip in all_colors:
             btn = Gtk.ToggleButton()
-            btn.set_size_request(28, 28)
-            btn.set_active(hex_c == self._selected_color)
-            btn.set_tooltip_text(hex_c)
+            btn.set_size_request(32, 32)
+            btn.set_tooltip_text(tip)
+            btn.set_active(hex_c == self._selected_color or
+                           (hex_c == "" and not self._selected_color))
+            bg = hex_c if hex_c else "@card_shade_color"
+            ring = hex_c if hex_c else "@card_fg_color"
             _prov = Gtk.CssProvider()
             _prov.load_from_string(
-                f"button{{background:{hex_c};min-width:22px;min-height:22px;border-radius:4px;}}"
-                f"button:checked{{box-shadow:0 0 0 2px @window_bg_color,0 0 0 4px {hex_c};}}"
+                f"button{{background:{bg};min-width:26px;min-height:26px;"
+                f"border-radius:4px;padding:0;font-size:14px;}}"
+                f"button:checked{{box-shadow:0 0 0 2px @window_bg_color,0 0 0 4px {ring};}}"
             )
             btn.get_style_context().add_provider(_prov, Gtk.STYLE_PROVIDER_PRIORITY_USER)
-            color_box.append(btn)
+            if hex_c == "":
+                btn.set_label("—")
+            row_box.append(btn)
             self._color_btns[hex_c] = btn
+        color_vbox = row_box
 
         def _on_color_toggled(btn, color):
             if btn.get_active():
@@ -651,7 +649,7 @@ class AddCategoryDialog(Adw.Dialog):
         for color, btn in self._color_btns.items():
             btn.connect("toggled", _on_color_toggled, color)
 
-        color_row.add_suffix(color_box)
+        color_group.add(color_vbox)
 
         # ── Rollover policies ─────────────────────────────────────────────────
         rollover_group = Adw.PreferencesGroup()
@@ -713,15 +711,32 @@ class AddCategoryDialog(Adw.Dialog):
         seasonal_group.set_description("Override the budget for specific months (0 = use default)")
         page.add(seasonal_group)
 
-        MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-        self._override_rows: list[Adw.SpinRow] = []
-        for i, month_name in enumerate(MONTHS):
-            row = Adw.SpinRow.new_with_range(0, 99_999, 10)
-            row.set_title(month_name)
-            row.set_digits(2)
-            seasonal_group.add(row)
-            self._override_rows.append(row)
+        _MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        self._override_spins: dict[int, Gtk.SpinButton] = {}
+
+        grid = Gtk.Grid()
+        grid.set_column_spacing(12)
+        grid.set_row_spacing(6)
+        grid.set_margin_top(10)
+        grid.set_margin_bottom(10)
+        grid.set_margin_start(12)
+        grid.set_margin_end(12)
+        for i, name in enumerate(_MONTHS):
+            row_i = i // 2
+            col_i = (i % 2) * 2
+            lbl = Gtk.Label(label=name)
+            lbl.set_xalign(1.0)
+            lbl.add_css_class("dim-label")
+            lbl.set_size_request(32, -1)
+            adj = Gtk.Adjustment(value=0.0, lower=0.0, upper=99_999.0, step_increment=10.0)
+            spin = Gtk.SpinButton(adjustment=adj, digits=2)
+            spin.set_hexpand(True)
+            spin.set_tooltip_text(f"Budget override for {name} (0 = use default)")
+            grid.attach(lbl,  col_i,     row_i, 1, 1)
+            grid.attach(spin, col_i + 1, row_i, 1, 1)
+            self._override_spins[i + 1] = spin
+        seasonal_group.add(grid)
 
         # ── Populate existing values ──────────────────────────────────────────
         if existing:
@@ -738,10 +753,10 @@ class AddCategoryDialog(Adw.Dialog):
                 self.deficit_row.set_selected(DEFICIT_POLICIES.index(dp))
             self.amortize_row.set_value(getattr(existing, "deficit_amortize_cycles", 3))
             overrides = getattr(existing, "monthly_overrides", {})
-            for i, spin in enumerate(self._override_rows):
-                spin.set_value(overrides.get(i + 1, 0.0))
+            for month_num, spin in self._override_spins.items():
+                spin.set_value(overrides.get(month_num, 0.0))
         else:
-            for spin in self._override_rows:
+            for spin in self._override_spins.values():
                 spin.set_value(0.0)
 
         self._SURPLUS_POLICIES = SURPLUS_POLICIES
@@ -779,8 +794,8 @@ class AddCategoryDialog(Adw.Dialog):
         deficit_policy  = self._DEFICIT_POLICIES[self.deficit_row.get_selected()]
         amortize_cycles = int(self.amortize_row.get_value())
         overrides       = {
-            i + 1: spin.get_value()
-            for i, spin in enumerate(self._override_rows)
+            m: spin.get_value()
+            for m, spin in self._override_spins.items()
             if spin.get_value() > 0
         }
 

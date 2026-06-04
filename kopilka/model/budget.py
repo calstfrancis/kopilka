@@ -23,6 +23,7 @@ CATEGORY_COLORS = [
     "#1a5fb4",  # indigo
     "#26a269",  # forest
     "#5c5c5c",  # slate
+    "#9a9996",  # stone
 ]
 
 

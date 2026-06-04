@@ -161,7 +161,18 @@ class BudgetCalculator:
         """
         Surplus (positive) or deficit (negative) from the previous cycle
         of a spending category, expressed in period units.
+        Returns 0.0 if the category has no spending history before the current cycle
+        (avoids phantom surplus on brand-new categories).
         """
+        if today is None:
+            today = date.today()
+        curr_start, _ = _curr_cycle(category.budget_period, today)
+        curr_start_iso = curr_start.isoformat()
+        if not any(
+            e.category_id == category.id and e.date < curr_start_iso
+            for e in spending
+        ):
+            return 0.0
         prev_start, prev_end = _prev_cycle(category.budget_period, today)
         prev_spent = sum(
             e.amount for e in spending
@@ -195,11 +206,11 @@ class BudgetCalculator:
 
     @staticmethod
     def category_effective_budget(category, spending, today: date | None = None) -> float:
-        """Current cycle budget in period units + any rollover adjustment."""
+        """Current cycle budget in period units + any rollover adjustment. Never negative."""
         if today is None:
             today = date.today()
         base = category.budget_for_month(today.month) / _PERIOD_FACTOR.get(category.budget_period, 1.0)
-        return base + BudgetCalculator.category_rollover(category, spending, today)
+        return max(0.0, base + BudgetCalculator.category_rollover(category, spending, today))
 
     # ── Savings / net worth ──────────────────────────────────────────────────
 

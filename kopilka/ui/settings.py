@@ -1,12 +1,19 @@
 """Settings view."""
 
+import threading
+
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 
-from gi.repository import Gtk, Adw, Gio, GLib
+from gi.repository import Gtk, Adw, GLib
 
-from kopilka.storage.json_io import load_config, save_config, set_budget_path
+from kopilka.storage.json_io import load_config, save_config
+from kopilka.logic.webdav_sync import PROVIDERS, WebDAVSyncManager, build_from_config
+
+
+_PROVIDER_KEYS = list(PROVIDERS.keys())
+_PROVIDER_LABELS = [PROVIDERS[k]["label"] for k in _PROVIDER_KEYS]
 
 
 class SettingsView(Gtk.ScrolledWindow):
@@ -31,7 +38,7 @@ class SettingsView(Gtk.ScrolledWindow):
 
         config = load_config()
 
-        # Users group
+        # ── Users ──────────────────────────────────────────────────────────────
         users_group = Adw.PreferencesGroup()
         users_group.set_title("Users")
         users_group.set_description("Names shown in income and spending tracking")
@@ -54,30 +61,108 @@ class SettingsView(Gtk.ScrolledWindow):
         save_users_btn.connect("clicked", self._on_save_users)
         users_group.set_header_suffix(save_users_btn)
 
-        # Sync group
+        # ── WebDAV Sync ────────────────────────────────────────────────────────
         sync_group = Adw.PreferencesGroup()
-        sync_group.set_title("pCloud Sync")
-        sync_group.set_description("Sync budget with your partner via pCloud Drive")
+        sync_group.set_title("WebDAV Sync")
+        sync_group.set_description(
+            "Sync the budget with your partner via a shared WebDAV folder.\n"
+            "Supports pCloud, Nextcloud, Disroot, and any WebDAV server."
+        )
         page.add(sync_group)
 
-        self.sync_row = Adw.ActionRow()
-        self.sync_row.set_title("Sync Folder")
-        self.sync_row.set_subtitle(budget.sync_path or "Not configured")
-        choose_btn = Gtk.Button(label="Choose…")
-        choose_btn.set_valign(Gtk.Align.CENTER)
-        choose_btn.set_tooltip_text("Select a pCloud shared folder — budget.json will be read and written there")
-        choose_btn.connect("clicked", self._on_choose_folder)
-        self.sync_row.add_suffix(choose_btn)
-        sync_group.add(self.sync_row)
+        # Provider selector
+        provider_model = Gtk.StringList()
+        for label in _PROVIDER_LABELS:
+            provider_model.append(label)
 
-        clear_sync_btn = Gtk.Button(label="Clear Sync Path")
+        self._provider_row = Adw.ComboRow()
+        self._provider_row.set_title("Provider")
+        self._provider_row.set_model(provider_model)
+        self._provider_row.set_tooltip_text(
+            "Choose your sync provider — URL will be pre-filled for known providers"
+        )
+        saved_provider = config.get("webdav_provider", "pcloud")
+        if saved_provider in _PROVIDER_KEYS:
+            self._provider_row.set_selected(_PROVIDER_KEYS.index(saved_provider))
+        self._provider_row.connect("notify::selected", self._on_provider_changed)
+        sync_group.add(self._provider_row)
+
+        # Server URL
+        self._url_row = Adw.EntryRow()
+        self._url_row.set_title("Server URL")
+        self._url_row.set_tooltip_text(
+            "Base WebDAV URL — e.g. https://webdav.pcloud.com  or  "
+            "https://cloud.example.com/remote.php/webdav"
+        )
+        self._url_row.set_text(config.get("webdav_url", PROVIDERS[saved_provider]["url"]))
+        sync_group.add(self._url_row)
+
+        # Remote path
+        self._path_row = Adw.EntryRow()
+        self._path_row.set_title("Remote Path")
+        self._path_row.set_tooltip_text(
+            "Path to budget.json relative to the WebDAV root — "
+            "e.g. Kopilka/budget.json"
+        )
+        self._path_row.set_text(
+            config.get("webdav_remote_path", PROVIDERS[saved_provider]["path_hint"])
+        )
+        sync_group.add(self._path_row)
+
+        # Username
+        self._user_row = Adw.EntryRow()
+        self._user_row.set_title("Username")
+        self._user_row.set_tooltip_text("Your account email or username for this server")
+        self._user_row.set_text(config.get("webdav_username", ""))
+        sync_group.add(self._user_row)
+
+        # Password
+        self._pass_row = Adw.PasswordEntryRow()
+        self._pass_row.set_title("Password")
+        self._pass_row.set_tooltip_text(
+            "Account password or app-specific password. "
+            "Stored locally only — never written to the synced budget file."
+        )
+        self._pass_row.set_text(config.get("webdav_password", ""))
+        sync_group.add(self._pass_row)
+
+        # Buttons row
+        btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        btn_box.set_halign(Gtk.Align.END)
+        btn_box.set_margin_top(4)
+
+        self._test_spinner = Gtk.Spinner()
+        self._test_spinner.set_visible(False)
+        btn_box.append(self._test_spinner)
+
+        self._test_status = Gtk.Label()
+        self._test_status.add_css_class("dim-label")
+        self._test_status.set_visible(False)
+        btn_box.append(self._test_status)
+
+        clear_sync_btn = Gtk.Button(label="Clear")
         clear_sync_btn.add_css_class("destructive-action")
-        clear_sync_btn.set_halign(Gtk.Align.END)
-        clear_sync_btn.set_tooltip_text("Stop syncing — budget stays local, pCloud folder is not changed")
+        clear_sync_btn.set_tooltip_text("Remove WebDAV credentials and disable sync")
         clear_sync_btn.connect("clicked", self._on_clear_sync)
-        sync_group.set_header_suffix(clear_sync_btn)
+        btn_box.append(clear_sync_btn)
 
-        # Dashboard preferences
+        test_btn = Gtk.Button(label="Test Connection")
+        test_btn.add_css_class("suggested-action")
+        test_btn.set_tooltip_text("Verify credentials by connecting to the server")
+        test_btn.connect("clicked", self._on_test_connection)
+        btn_box.append(test_btn)
+
+        save_sync_btn = Gtk.Button(label="Save")
+        save_sync_btn.set_tooltip_text("Save WebDAV settings")
+        save_sync_btn.connect("clicked", self._on_save_sync)
+        btn_box.append(save_sync_btn)
+
+        btn_row = Adw.ActionRow()
+        btn_row.set_activatable(False)
+        btn_row.add_suffix(btn_box)
+        sync_group.add(btn_row)
+
+        # ── Dashboard ──────────────────────────────────────────────────────────
         dash_group = Adw.PreferencesGroup()
         dash_group.set_title("Dashboard")
         page.add(dash_group)
@@ -93,7 +178,7 @@ class SettingsView(Gtk.ScrolledWindow):
         self._bills_spin.connect("notify::value", self._on_bills_lookhead_changed)
         dash_group.add(self._bills_spin)
 
-        # Danger group
+        # ── Danger ────────────────────────────────────────────────────────────
         danger_group = Adw.PreferencesGroup()
         danger_group.set_title("Data")
         page.add(danger_group)
@@ -105,6 +190,8 @@ class SettingsView(Gtk.ScrolledWindow):
         clear_spending_btn.set_tooltip_text("Permanently delete every logged purchase — cannot be undone")
         clear_spending_btn.connect("clicked", self._on_clear_spending)
         danger_group.add(clear_spending_btn)
+
+    # ── Users ──────────────────────────────────────────────────────────────────
 
     def _on_save_users(self, _btn):
         name1 = self.user1_row.get_text().strip()
@@ -124,40 +211,96 @@ class SettingsView(Gtk.ScrolledWindow):
         toast.set_title("Names saved")
         self.get_root().add_toast(toast)
 
-    def _on_choose_folder(self, _btn):
-        dialog = Gtk.FileDialog()
-        dialog.set_title("Select pCloud Sync Folder")
-        dialog.select_folder(self.get_root(), None, self._folder_chosen)
+    # ── WebDAV ─────────────────────────────────────────────────────────────────
 
-    def _folder_chosen(self, dialog, result):
-        try:
-            folder = dialog.select_folder_finish(result)
-            if folder:
-                path = folder.get_path()
-                self.budget.sync_path = path
-                self.sync_row.set_subtitle(path)
+    def _on_provider_changed(self, row, _param):
+        idx = row.get_selected()
+        key = _PROVIDER_KEYS[idx]
+        preset = PROVIDERS[key]
+        if preset["url"]:
+            self._url_row.set_text(preset["url"])
+        if preset["path_hint"] and not self._path_row.get_text():
+            self._path_row.set_text(preset["path_hint"])
 
-                config = load_config()
-                config["sync_path"] = path
-                save_config(config)
-                set_budget_path(f"{path}/budget.json")
+    def _on_save_sync(self, _btn):
+        config = load_config()
+        idx = self._provider_row.get_selected()
+        config["webdav_provider"]     = _PROVIDER_KEYS[idx]
+        config["webdav_url"]          = self._url_row.get_text().strip().rstrip("/")
+        config["webdav_remote_path"]  = self._path_row.get_text().strip().lstrip("/")
+        config["webdav_username"]     = self._user_row.get_text().strip()
+        config["webdav_password"]     = self._pass_row.get_text()
+        # Clear cached ETag so next upload doesn't use a stale value
+        config.pop("webdav_etag", None)
+        save_config(config)
 
-                self.on_change()
+        toast = Adw.Toast()
+        toast.set_title("Sync settings saved — uploading…")
+        self.get_root().add_toast(toast)
 
-                toast = Adw.Toast()
-                toast.set_title(f"Sync folder set to {path}")
-                self.get_root().add_toast(toast)
-        except GLib.Error:
-            pass
+        # Trigger an immediate upload so the folder and file are created now.
+        # _webdav_upload_async in AppWindow always reloads config from disk,
+        # so it will pick up the credentials we just saved.
+        self.on_change()
+
+    def _on_clear_sync(self, _btn):
+        config = load_config()
+        for key in ("webdav_url", "webdav_remote_path", "webdav_username",
+                    "webdav_password", "webdav_provider", "webdav_etag"):
+            config.pop(key, None)
+        save_config(config)
+
+        self._url_row.set_text("")
+        self._path_row.set_text("")
+        self._user_row.set_text("")
+        self._pass_row.set_text("")
+        self._test_status.set_visible(False)
+
+        toast = Adw.Toast()
+        toast.set_title("Sync disabled")
+        self.get_root().add_toast(toast)
+
+    def _on_test_connection(self, _btn):
+        # Build a temporary manager from what's currently in the form
+        config = {
+            "webdav_url":         self._url_row.get_text().strip().rstrip("/"),
+            "webdav_remote_path": self._path_row.get_text().strip().lstrip("/"),
+            "webdav_username":    self._user_row.get_text().strip(),
+            "webdav_password":    self._pass_row.get_text(),
+        }
+        mgr = build_from_config(config)
+
+        self._test_spinner.set_visible(True)
+        self._test_spinner.start()
+        self._test_status.set_visible(False)
+
+        threading.Thread(
+            target=self._run_test,
+            args=(mgr,),
+            daemon=True,
+        ).start()
+
+    def _run_test(self, mgr: WebDAVSyncManager):
+        ok, msg = mgr.test_connection()
+        GLib.idle_add(self._show_test_result, ok, msg)
+
+    def _show_test_result(self, ok: bool, msg: str):
+        self._test_spinner.stop()
+        self._test_spinner.set_visible(False)
+        self._test_status.set_text(msg)
+        self._test_status.remove_css_class("success")
+        self._test_status.remove_css_class("error")
+        self._test_status.add_css_class("success" if ok else "error")
+        self._test_status.set_visible(True)
+        return GLib.SOURCE_REMOVE
+
+    # ── Dashboard ──────────────────────────────────────────────────────────────
 
     def _on_bills_lookhead_changed(self, spin, _param):
         self.budget.bills_look_ahead_days = int(spin.get_value())
         self.on_change()
 
-    def _on_clear_sync(self, _btn):
-        self.budget.sync_path = ""
-        self.sync_row.set_subtitle("Not configured")
-        self.on_change()
+    # ── Danger ────────────────────────────────────────────────────────────────
 
     def _on_clear_spending(self, _btn):
         dlg = Adw.AlertDialog()

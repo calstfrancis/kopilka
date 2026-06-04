@@ -1,5 +1,7 @@
 """Main application window."""
 
+import threading
+
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
@@ -15,9 +17,12 @@ from kopilka.ui.savings import SavingsView
 from kopilka.ui.settings import SettingsView
 from kopilka.storage.json_io import (
     load_budget, save_budget, is_first_launch,
-    get_budget_path, load_config,
+    get_budget_path, load_config, save_config,
 )
 from kopilka.logic.sync import SyncManager
+from kopilka.logic.webdav_sync import (
+    WebDAVSyncManager, ConflictError, conflict_files_local, build_from_config,
+)
 
 
 NAV_PAGES = [
@@ -40,7 +45,10 @@ class AppWindow(Adw.ApplicationWindow):
         self.budget = load_budget()
         self._budget_path = get_budget_path()
         self._load_mtime = SyncManager.get_file_mtime(self._budget_path)
-        self._current_user = load_config().get("user1_name", self.budget.couple[0])
+        cfg = load_config()
+        self._current_user = cfg.get("user1_name", self.budget.couple[0])
+        self._webdav = build_from_config(cfg)
+        self._webdav_uploading = False
 
         self.set_title("Kopilka")
         self.set_default_size(1200, 800)
@@ -174,6 +182,11 @@ class AppWindow(Adw.ApplicationWindow):
         self._page_title.set_title("Dashboard")
         content_header.set_title_widget(self._page_title)
 
+        self._sync_spinner = Gtk.Spinner()
+        self._sync_spinner.set_tooltip_text("Syncing to WebDAV…")
+        self._sync_spinner.set_visible(False)
+        content_header.pack_end(self._sync_spinner)
+
         content_box.append(content_header)
 
         # Reload banner (hidden until a newer version of the file is detected)
@@ -243,7 +256,8 @@ class AppWindow(Adw.ApplicationWindow):
             from kopilka.ui.setup_wizard import SetupWizard
             SetupWizard(self.budget, self._on_wizard_complete).present(self)
         else:
-            conflicts = SyncManager.conflict_files(self._budget_path)
+            # Check for local conflict copies (from previous WebDAV conflict saves)
+            conflicts = conflict_files_local(self._budget_path)
             if conflicts:
                 self._show_conflict_dialog(conflicts)
         return GLib.SOURCE_REMOVE
@@ -251,35 +265,83 @@ class AppWindow(Adw.ApplicationWindow):
     def _on_focus_changed(self, _win, _param):
         if not self.is_active():
             return
-        if SyncManager.is_externally_modified(self._budget_path, self._load_mtime):
+        cfg = load_config()
+        self._webdav = build_from_config(cfg)
+        if self._webdav.is_configured():
+            # Check remote ETag in background so focus-gain is instant
+            threading.Thread(target=self._check_webdav_remote, daemon=True).start()
+        elif SyncManager.is_externally_modified(self._budget_path, self._load_mtime):
+            # Fallback: local mtime check (no WebDAV configured)
             meta = SyncManager.peek_metadata(self._budget_path)
             who = meta["last_modified_by"]
             when = SyncManager.friendly_time(meta["last_modified"])
             msg = f"Budget updated by {who}"
             if when:
                 msg += f" — {when}"
-            self._reload_banner.set_title(msg)
-            self._reload_banner.set_revealed(True)
+            GLib.idle_add(self._show_reload_banner, msg)
+
+    def _check_webdav_remote(self):
+        """Background thread: PROPFIND remote ETag; notify UI if newer."""
+        try:
+            if self._webdav.is_remote_newer():
+                meta = self._webdav.peek_remote_metadata()
+                who = meta["last_modified_by"]
+                when = SyncManager.friendly_time(meta["last_modified"])
+                msg = f"Budget updated by {who}"
+                if when:
+                    msg += f" — {when}"
+                GLib.idle_add(self._show_reload_banner, msg)
+        except Exception:
+            pass
+
+    def _show_reload_banner(self, msg: str):
+        self._reload_banner.set_title(msg)
+        self._reload_banner.set_revealed(True)
+        return GLib.SOURCE_REMOVE
 
     def _on_reload_clicked(self, _banner):
-        self.budget = load_budget()
-        self._load_mtime = SyncManager.get_file_mtime(self._budget_path)
         self._reload_banner.set_revealed(False)
-        self._refresh_all_views()
+        if self._webdav.is_configured():
+            threading.Thread(target=self._webdav_download_and_reload, daemon=True).start()
+        else:
+            self.budget = load_budget()
+            self._load_mtime = SyncManager.get_file_mtime(self._budget_path)
+            self._refresh_all_views()
+            toast = Adw.Toast()
+            toast.set_title("Budget reloaded")
+            self._toast_overlay.add_toast(toast)
 
+    def _webdav_download_and_reload(self):
+        """Background thread: download from WebDAV then refresh UI."""
+        try:
+            new_etag = self._webdav.download(self._budget_path)
+            cfg = load_config()
+            cfg["webdav_etag"] = new_etag
+            save_config(cfg)
+            self._webdav = build_from_config(cfg)
+            GLib.idle_add(self._finish_reload, "Budget reloaded from WebDAV", None)
+        except Exception as e:
+            GLib.idle_add(self._finish_reload, None, str(e))
+
+    def _finish_reload(self, success_msg: str | None, error_msg: str | None):
+        if success_msg:
+            self.budget = load_budget()
+            self._load_mtime = SyncManager.get_file_mtime(self._budget_path)
+            self._refresh_all_views()
         toast = Adw.Toast()
-        toast.set_title("Budget reloaded")
+        toast.set_title(success_msg or f"Reload failed: {error_msg}")
         self._toast_overlay.add_toast(toast)
+        return GLib.SOURCE_REMOVE
 
     def _show_conflict_dialog(self, conflict_paths):
         names = "\n".join(p.name for p in conflict_paths[:3])
         dlg = Adw.AlertDialog()
-        dlg.set_heading("Sync Conflict Detected")
+        dlg.set_heading("Sync Conflict")
         dlg.set_body(
-            "pCloud found conflicting versions of your budget:\n\n"
+            "Conflicting versions of your budget were saved locally:\n\n"
             f"{names}\n\n"
             "Keep your current version and delete the conflict files, "
-            "or open the pCloud folder to review them manually."
+            "or open the folder to compare them manually."
         )
         dlg.add_response("keep", "Keep Current")
         dlg.add_response("open_folder", "Open Folder")
@@ -299,6 +361,52 @@ class AppWindow(Adw.ApplicationWindow):
                     p.unlink()
                 except OSError:
                     pass
+
+    def _webdav_upload_async(self):
+        """Fire-and-forget background upload. Shows spinner while in progress."""
+        cfg = load_config()
+        self._webdav = build_from_config(cfg)
+        if not self._webdav.is_configured() or self._webdav_uploading:
+            return
+        self._webdav_uploading = True
+        self._sync_spinner.set_visible(True)
+        self._sync_spinner.start()
+        threading.Thread(target=self._webdav_upload_worker, daemon=True).start()
+
+    def _webdav_upload_worker(self):
+        try:
+            new_etag = self._webdav.upload(self._budget_path)
+            cfg = load_config()
+            cfg["webdav_etag"] = new_etag
+            save_config(cfg)
+            self._webdav = build_from_config(cfg)
+            GLib.idle_add(self._on_upload_done, None)
+        except ConflictError:
+            # Remote changed — save conflict copy and notify user
+            try:
+                conflict_path = self._webdav.save_conflict_copy(self._budget_path)
+                GLib.idle_add(self._on_upload_conflict, conflict_path)
+            except Exception as e:
+                GLib.idle_add(self._on_upload_done, f"Conflict — could not fetch remote: {e}")
+        except Exception as e:
+            GLib.idle_add(self._on_upload_done, str(e))
+
+    def _on_upload_done(self, error: str | None):
+        self._webdav_uploading = False
+        self._sync_spinner.stop()
+        self._sync_spinner.set_visible(False)
+        if error:
+            toast = Adw.Toast()
+            toast.set_title(f"Sync failed: {error}")
+            self._toast_overlay.add_toast(toast)
+        return GLib.SOURCE_REMOVE
+
+    def _on_upload_conflict(self, conflict_path):
+        self._webdav_uploading = False
+        self._sync_spinner.stop()
+        self._sync_spinner.set_visible(False)
+        self._show_conflict_dialog([conflict_path])
+        return GLib.SOURCE_REMOVE
 
     # ── Navigation ────────────────────────────────────────────────────────────
 
@@ -322,12 +430,25 @@ class AppWindow(Adw.ApplicationWindow):
         self._load_mtime = SyncManager.get_file_mtime(self._budget_path)
         self._reload_banner.set_revealed(False)
         self._refresh_all_views()
+        self._webdav_upload_async()
 
     def _on_wizard_complete(self):
-        self._current_user = load_config().get("user1_name", self.budget.couple[0])
+        cfg = load_config()
+        self._current_user = cfg.get("user1_name", self.budget.couple[0])
+        self._webdav = build_from_config(cfg)
         self._on_budget_change()
 
+    def _propagate_budget(self):
+        """Push the current budget object to every view that caches it."""
+        for view in (
+            self.income_view, self.expense_view, self.debt_view,
+            self.category_view, self.log_view, self.reports_view,
+            self.savings_view, self.settings_view,
+        ):
+            view.budget = self.budget
+
     def _refresh_all_views(self):
+        self._propagate_budget()
         self.dashboard.refresh(self.budget)
         self.income_view.refresh()
         self.expense_view.refresh()
@@ -399,6 +520,8 @@ class AppWindow(Adw.ApplicationWindow):
             self.budget = load_budget()
             self._load_mtime = SyncManager.get_file_mtime(path)
             self._current_user = self.budget.couple[0] if self.budget.couple else "User 1"
+            cfg = load_config()
+            self._webdav = build_from_config(cfg)
             self._refresh_all_views()
             toast = Adw.Toast()
             toast.set_title(f"Opened: {__import__('pathlib').Path(path).name}")
