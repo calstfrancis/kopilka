@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Kopilka — Couples Budget Planner
-Shared finance management with tax estimation and spending tracking.
+Shared finance management and spending tracker for couples.
 """
 
 import sys

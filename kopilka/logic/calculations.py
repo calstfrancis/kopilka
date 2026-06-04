@@ -3,7 +3,6 @@
 import math
 from datetime import date, timedelta
 
-from kopilka.logic.tax_calc import TaxCalculator
 
 _PERIOD_FACTOR = {
     "weekly":     4.33,
@@ -85,22 +84,7 @@ class BudgetCalculator:
 
     @staticmethod
     def monthly_net_income(budget) -> float:
-        annual_taxable = 0.0
-        annual_cpp_ei  = 0.0
-        for inc in budget.income:
-            if not inc.active or not inc.is_taxed or inc.frequency == "once":
-                continue
-            annual = BudgetCalculator._to_annual(inc.amount, inc.frequency)
-            annual_taxable += annual
-            if getattr(inc, "cpp_ei_applicable", True):
-                annual_cpp_ei += annual
-
-        monthly_deductions = (
-            TaxCalculator.estimate_monthly_income_tax(annual_taxable)
-            + TaxCalculator.estimate_monthly_cpp(annual_cpp_ei)
-            + TaxCalculator.estimate_monthly_ei(annual_cpp_ei)
-        )
-        return BudgetCalculator.monthly_gross_income(budget) - monthly_deductions
+        return BudgetCalculator.monthly_gross_income(budget)
 
     # ── Fixed costs / debt ───────────────────────────────────────────────────
 

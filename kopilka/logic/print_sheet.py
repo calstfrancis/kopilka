@@ -133,7 +133,7 @@ def _draw_income(cr, x, y, w, budget, gross, net):
         y += ROW_H
     _hline(cr, x, x + w, y + 1)
     y += 5
-    _txt(cr, x, y, "Net take-home", F_BOLD, C_INK)
+    _txt(cr, x, y, "Total income", F_BOLD, C_INK)
     _txt(cr, x, y, _fmt(net) + "/mo", F_BOLD, C_INK, align="right", box_w=w)
     return y + ROW_H
 
@@ -223,7 +223,7 @@ def _draw_categories(cr, x, y_top, w, max_h, budget, total_monthly):
 # ── Summary strip ─────────────────────────────────────────────────────────────
 
 def _draw_summary(cr, x, y, w, net, fixed, debt_m, cats_m, unalloc):
-    items = [("Net take-home", _fmt(net) + "/mo"), ("Fixed bills", "−" + _fmt(fixed))]
+    items = [("Income", _fmt(net) + "/mo"), ("Fixed bills", "−" + _fmt(fixed))]
     if debt_m > 0:
         items.append(("Debt", "−" + _fmt(debt_m)))
     items.append(("Categories", "−" + _fmt(cats_m)))

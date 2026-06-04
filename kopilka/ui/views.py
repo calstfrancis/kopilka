@@ -176,11 +176,6 @@ class IncomeView(Gtk.Box):
                         parts.append("payday tomorrow")
                     else:
                         parts.append(f"payday {payday.strftime('%-d %b')} ({days}d)")
-            if inc.is_taxed:
-                cpp_ei = getattr(inc, "cpp_ei_applicable", True)
-                parts.append("tax + CPP/EI" if cpp_ei else "tax only")
-            else:
-                parts.append("non-taxable")
             if not inc.active:
                 parts.append("inactive")
             row.set_subtitle("  ·  ".join(parts))

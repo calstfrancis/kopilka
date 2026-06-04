@@ -33,8 +33,6 @@ class IncomeSource:
     owner: str
     amount: float
     frequency: str          # weekly | biweekly | monthly | semesterly | yearly | once
-    is_taxed: bool = True
-    cpp_ei_applicable: bool = True
     notes: str = ""
     active: bool = True
     date: str = ""          # ISO date for one-time items
@@ -194,8 +192,6 @@ class Budget:
     last_modified: str = field(default_factory=lambda: datetime.now().isoformat())
     last_modified_by: str = "User 1"
     currency: str = "CAD"
-    tax_year: int = 2026
-    province: str = "Nova Scotia"
     sync_path: str = ""
     bills_look_ahead_days: int = 7
 
@@ -219,8 +215,6 @@ class Budget:
             },
             "config": {
                 "currency": self.currency,
-                "tax_year": self.tax_year,
-                "province": self.province,
                 "sync_path": self.sync_path,
                 "bills_look_ahead_days": self.bills_look_ahead_days,
             },
@@ -260,13 +254,14 @@ class Budget:
         if "config" in data:
             c = data["config"]
             budget.currency              = c.get("currency", "CAD")
-            budget.tax_year              = c.get("tax_year", 2026)
-            budget.province              = c.get("province", "Nova Scotia")
             budget.sync_path             = c.get("sync_path", "")
             budget.bills_look_ahead_days = c.get("bills_look_ahead_days", 7)
 
         for i in data.get("income", []):
             try:
+                # Strip fields removed in v0.5 so old budget files still load
+                i.pop("is_taxed", None)
+                i.pop("cpp_ei_applicable", None)
                 budget.income.append(IncomeSource(**i))
             except TypeError:
                 pass

@@ -114,24 +114,6 @@ class AddIncomeDialog(Adw.Dialog):
 
         self.freq_row.connect("notify::selected", self._on_freq_changed_income)
 
-        self.taxed_row = Adw.SwitchRow()
-        self.taxed_row.set_title("Taxable Income")
-        self.taxed_row.set_tooltip_text("Include this income in the tax and deduction estimate")
-        self.taxed_row.set_active(True)
-        group.add(self.taxed_row)
-
-        self.cpp_ei_row = Adw.SwitchRow()
-        self.cpp_ei_row.set_title("Subject to CPP & EI")
-        self.cpp_ei_row.set_subtitle("Disable for scholarships, investments, pensions…")
-        self.cpp_ei_row.set_tooltip_text(
-            "CPP and EI apply to employment income. Disable for non-employment sources."
-        )
-        self.cpp_ei_row.set_active(True)
-        group.add(self.cpp_ei_row)
-
-        # Hide CPP/EI toggle when income is non-taxable
-        self.taxed_row.connect("notify::active", self._on_taxed_toggled)
-
         self.active_row = Adw.SwitchRow()
         self.active_row.set_title("Active")
         self.active_row.set_tooltip_text("Inactive sources are excluded from all calculations")
@@ -155,30 +137,15 @@ class AddIncomeDialog(Adw.Dialog):
                 self.date_row.set_text(existing.date)
             if getattr(existing, "next_payday", ""):
                 self.payday_row.set_text(existing.next_payday)
-            self.taxed_row.set_active(existing.is_taxed)
-            self.cpp_ei_row.set_active(getattr(existing, "cpp_ei_applicable", True))
             self.active_row.set_active(existing.active)
             self.notes_row.set_text(existing.notes or "")
 
-        self._on_taxed_toggled()
         self._on_freq_changed_income()
 
     def _on_freq_changed_income(self, *_args):
         freq = FREQUENCIES[self.freq_row.get_selected()]
-        is_once = freq == "once"
-        is_biweekly = freq == "biweekly"
-        self.date_row.set_visible(is_once)
-        self.payday_row.set_visible(is_biweekly)
-        self.cpp_ei_row.set_sensitive(self.taxed_row.get_active() and not is_once)
-        if is_once:
-            self.cpp_ei_row.set_active(False)
-
-    def _on_taxed_toggled(self, *_args):
-        taxed = self.taxed_row.get_active()
-        is_once = FREQUENCIES[self.freq_row.get_selected()] == "once"
-        self.cpp_ei_row.set_sensitive(taxed and not is_once)
-        if not taxed:
-            self.cpp_ei_row.set_active(False)
+        self.date_row.set_visible(freq == "once")
+        self.payday_row.set_visible(freq == "biweekly")
 
     def _on_save(self, _btn):
         name = self.name_row.get_text().strip()
@@ -191,9 +158,6 @@ class AddIncomeDialog(Adw.Dialog):
         owner = owners[self.owner_row.get_selected()]
         amount = self.amount_row.get_value()
         frequency = FREQUENCIES[self.freq_row.get_selected()]
-        is_taxed = self.taxed_row.get_active()
-        cpp_ei = self.cpp_ei_row.get_active()
-
         item_date = self.date_row.get_text().strip() if frequency == "once" else ""
         next_payday = self.payday_row.get_text().strip() if frequency == "biweekly" else ""
 
@@ -202,8 +166,6 @@ class AddIncomeDialog(Adw.Dialog):
             self.existing.owner = owner
             self.existing.amount = amount
             self.existing.frequency = frequency
-            self.existing.is_taxed = is_taxed
-            self.existing.cpp_ei_applicable = cpp_ei
             self.existing.active = self.active_row.get_active()
             self.existing.notes = self.notes_row.get_text().strip()
             self.existing.date = item_date
@@ -215,8 +177,6 @@ class AddIncomeDialog(Adw.Dialog):
                 owner=owner,
                 amount=amount,
                 frequency=frequency,
-                is_taxed=is_taxed,
-                cpp_ei_applicable=cpp_ei,
                 active=self.active_row.get_active(),
                 notes=self.notes_row.get_text().strip(),
                 date=item_date,

@@ -18,8 +18,6 @@ BUDGET_SCHEMA = {
             "type": "object",
             "properties": {
                 "currency": {"type": "string"},
-                "tax_year": {"type": "integer"},
-                "province": {"type": "string"},
                 "sync_path": {"type": "string"},
             }
         },

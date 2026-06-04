@@ -78,17 +78,9 @@ class Dashboard(Gtk.Box):
         income_group.set_title("Income")
         page.add(income_group)
 
-        self.gross_row, self.gross_lbl = _amount_row("Monthly Gross")
+        self.gross_row, self.gross_lbl = _amount_row("Monthly Income")
+        self.gross_row.add_css_class("property")
         income_group.add(self.gross_row)
-
-        self.tax_row, self.tax_lbl = _amount_row(
-            "Est. Deductions", "income tax + CPP + EI"
-        )
-        income_group.add(self.tax_row)
-
-        self.net_row, self.net_lbl = _amount_row("Monthly Net")
-        self.net_row.add_css_class("property")
-        income_group.add(self.net_row)
 
         # ── Monthly Budget ────────────────────────────────────────────────────
         self._budget_group = Adw.PreferencesGroup()
@@ -103,7 +95,7 @@ class Dashboard(Gtk.Box):
         budget_group.add(self.debt_row)
 
         self.discretionary_row, self.disc_lbl = _amount_row(
-            "Total Discretionary", "net income after fixed costs and debt"
+            "Total Discretionary", "income after fixed costs and debt"
         )
         budget_group.add(self.discretionary_row)
 
@@ -151,7 +143,6 @@ class Dashboard(Gtk.Box):
         self._budget_group.set_visible(not active)
         self._nw_container.set_visible(not active)
         self._bills_container.set_visible(not active)
-        self.tax_row.set_visible(not active)
 
     def refresh(self, budget):
         self.budget = budget
@@ -161,20 +152,15 @@ class Dashboard(Gtk.Box):
         self._budget_group.set_visible(not self._simple_mode)
         self._nw_container.set_visible(not self._simple_mode)
         self._bills_container.set_visible(not self._simple_mode)
-        self.tax_row.set_visible(not self._simple_mode)
 
         gross = BudgetCalculator.monthly_gross_income(budget)
-        net = BudgetCalculator.monthly_net_income(budget)
-        tax = gross - net
         fixed = BudgetCalculator.monthly_fixed_costs(budget)
         debt = BudgetCalculator.monthly_debt_payments(budget)
         discretionary = BudgetCalculator.available_to_spend(budget)
         cat_budgets = BudgetCalculator.monthly_category_budgets(budget)
         unallocated = BudgetCalculator.unallocated_discretionary(budget)
 
-        _set_amount(self.gross_lbl, gross)
-        _set_amount(self.tax_lbl, tax, negative=True, color_class="dim-label")
-        _set_amount(self.net_lbl, net, color_class="accent")
+        _set_amount(self.gross_lbl, gross, color_class="accent")
         _set_amount(self.fixed_lbl, fixed, negative=True)
         _set_amount(self.debt_lbl, debt, negative=True)
         _set_amount(self.disc_lbl, discretionary)
