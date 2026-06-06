@@ -132,6 +132,20 @@ def _make_listbox():
     return lb
 
 
+def _confirm_delete(heading: str, body: str, parent, on_confirm) -> None:
+    """Show a destructive-action confirmation dialog; call on_confirm() if the user confirms."""
+    dlg = Adw.AlertDialog()
+    dlg.set_heading(heading)
+    dlg.set_body(body)
+    dlg.add_response("cancel", "Cancel")
+    dlg.add_response("delete", "Delete")
+    dlg.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
+    dlg.set_default_response("cancel")
+    dlg.set_close_response("cancel")
+    dlg.connect("response", lambda d, r: on_confirm() if r == "delete" else None)
+    dlg.present(parent)
+
+
 # ---------------------------------------------------------------------------
 # Income View
 # ---------------------------------------------------------------------------
@@ -213,9 +227,11 @@ class IncomeView(Gtk.Box):
         AddIncomeDialog(self.budget, on_saved=self._saved, existing=inc).present(self.get_root())
 
     def _on_delete(self, _btn, inc):
-        self.budget.income.remove(inc)
-        self.on_change()
-        self.refresh()
+        def _do():
+            self.budget.income.remove(inc)
+            self.on_change()
+            self.refresh()
+        _confirm_delete("Remove Income Source?", f'"{inc.name}" will be permanently removed.', self.get_root(), _do)
 
     def _saved(self, _item):
         self.on_change()
@@ -308,9 +324,11 @@ class ExpenseView(Gtk.Box):
         AddExpenseDialog(self.budget, on_saved=self._saved, existing=exp).present(self.get_root())
 
     def _on_delete(self, _btn, exp):
-        self.budget.expenses_fixed.remove(exp)
-        self.on_change()
-        self.refresh()
+        def _do():
+            self.budget.expenses_fixed.remove(exp)
+            self.on_change()
+            self.refresh()
+        _confirm_delete("Remove Expense?", f'"{exp.name}" will be permanently removed.', self.get_root(), _do)
 
     def _saved(self, _item):
         self.on_change()
@@ -550,9 +568,11 @@ class DebtView(Gtk.Box):
         _DebtBalanceDialog(debt, self._saved).present(self.get_root())
 
     def _on_delete(self, _btn, debt):
-        self.budget.debt.remove(debt)
-        self.on_change()
-        self.refresh()
+        def _do():
+            self.budget.debt.remove(debt)
+            self.on_change()
+            self.refresh()
+        _confirm_delete("Remove Debt?", f'"{debt.name}" will be permanently removed.', self.get_root(), _do)
 
     def _saved(self, _item):
         self.on_change()
@@ -682,9 +702,11 @@ class CategoryView(Gtk.Box):
         AddCategoryDialog(self.budget, on_saved=self._saved, existing=cat).present(self.get_root())
 
     def _on_delete(self, _btn, cat):
-        self.budget.categories.remove(cat)
-        self.on_change()
-        self.refresh()
+        def _do():
+            self.budget.categories.remove(cat)
+            self.on_change()
+            self.refresh()
+        _confirm_delete("Remove Category?", f'"{cat.name}" and all its budget settings will be permanently removed.', self.get_root(), _do)
 
     def _saved(self, _item):
         self.on_change()

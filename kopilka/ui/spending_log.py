@@ -14,6 +14,19 @@ from kopilka.model.budget import ONE_TIME_CATEGORY_ID
 from kopilka.ui.forms import LogSpendingDialog, AddRecurringDialog
 
 
+def _confirm_delete_log(heading: str, body: str, parent, on_confirm) -> None:
+    dlg = Adw.AlertDialog()
+    dlg.set_heading(heading)
+    dlg.set_body(body)
+    dlg.add_response("cancel", "Cancel")
+    dlg.add_response("delete", "Delete")
+    dlg.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
+    dlg.set_default_response("cancel")
+    dlg.set_close_response("cancel")
+    dlg.connect("response", lambda d, r: on_confirm() if r == "delete" else None)
+    dlg.present(parent)
+
+
 def _clear_box(box):
     child = box.get_first_child()
     while child:
@@ -213,7 +226,14 @@ class SpendingLogView(Gtk.Box):
             groups.setdefault(e.date, []).append(e)
 
         for day in sorted(groups.keys(), reverse=True):
-            day_lbl = Gtk.Label(label=day)
+            try:
+                d = date.fromisoformat(day)
+                friendly = d.strftime("%A, %B ") + str(d.day)
+                if d.year != date.today().year:
+                    friendly += f", {d.year}"
+            except ValueError:
+                friendly = day
+            day_lbl = Gtk.Label(label=friendly)
             day_lbl.add_css_class("caption")
             day_lbl.add_css_class("dim-label")
             day_lbl.set_xalign(0)
@@ -360,9 +380,13 @@ class SpendingLogView(Gtk.Box):
         LogSpendingDialog(self.budget, on_saved=self._saved, existing=entry).present(self.get_root())
 
     def _on_delete(self, _btn, entry):
-        self.budget.spending.remove(entry)
-        self.on_change()
-        self.refresh()
+        desc = entry.description or "(no description)"
+        body = f'${entry.amount:,.2f} — {desc}'
+        def _do():
+            self.budget.spending.remove(entry)
+            self.on_change()
+            self.refresh()
+        _confirm_delete_log("Delete Entry?", body, self.get_root(), _do)
 
     # ── Recurring ─────────────────────────────────────────────────────────────
 
@@ -373,9 +397,11 @@ class SpendingLogView(Gtk.Box):
         AddRecurringDialog(self.budget, on_saved=self._saved_recurring, existing=rec).present(self.get_root())
 
     def _on_delete_recurring(self, _btn, rec):
-        self.budget.recurring.remove(rec)
-        self.on_change()
-        self.refresh()
+        def _do():
+            self.budget.recurring.remove(rec)
+            self.on_change()
+            self.refresh()
+        _confirm_delete_log("Remove Recurring Entry?", f'"{rec.name}" will be permanently removed.', self.get_root(), _do)
 
     def _saved_recurring(self, _item):
         self.on_change()

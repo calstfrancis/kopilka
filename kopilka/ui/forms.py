@@ -27,6 +27,18 @@ def _freq_list():
     return sl
 
 
+def _add_today_btn(row: "Adw.EntryRow") -> None:
+    """Append a 'reset to today' icon button to a date EntryRow."""
+    btn = Gtk.Button()
+    btn.set_icon_name("go-jump-symbolic")
+    btn.set_tooltip_text("Set to today")
+    btn.add_css_class("flat")
+    btn.add_css_class("circular")
+    btn.set_valign(Gtk.Align.CENTER)
+    btn.connect("clicked", lambda _: row.set_text(date.today().isoformat()))
+    row.add_suffix(btn)
+
+
 def _build_toolbar_view(title, on_save):
     """Return (toolbar_view, header) wired with Cancel/Save buttons."""
     toolbar_view = Adw.ToolbarView()
@@ -98,9 +110,10 @@ class AddIncomeDialog(Adw.Dialog):
 
         self.date_row = Adw.EntryRow()
         self.date_row.set_title("Date (YYYY-MM-DD)")
-        self.date_row.set_text(__import__("datetime").date.today().isoformat())
+        self.date_row.set_text(date.today().isoformat())
         self.date_row.set_visible(False)
         self.date_row.set_tooltip_text("Date the one-time payment was received")
+        _add_today_btn(self.date_row)
         group.add(self.date_row)
 
         self.payday_row = Adw.EntryRow()
@@ -233,8 +246,9 @@ class AddExpenseDialog(Adw.Dialog):
 
         self.exp_date_row = Adw.EntryRow()
         self.exp_date_row.set_title("Date (YYYY-MM-DD)")
-        self.exp_date_row.set_text(__import__("datetime").date.today().isoformat())
+        self.exp_date_row.set_text(date.today().isoformat())
         self.exp_date_row.set_visible(False)
+        _add_today_btn(self.exp_date_row)
         group.add(self.exp_date_row)
 
         # Due-date rows — only one is shown at a time depending on frequency
@@ -818,6 +832,7 @@ class LogSpendingDialog(Adw.Dialog):
         self.date_row = Adw.EntryRow()
         self.date_row.set_title("Date (YYYY-MM-DD)")
         self.date_row.set_text(existing.date if existing else date.today().isoformat())
+        _add_today_btn(self.date_row)
         group.add(self.date_row)
 
         self.cat_row = Adw.ComboRow()
@@ -863,16 +878,22 @@ class LogSpendingDialog(Adw.Dialog):
 
     def _on_save(self, _btn):
         date_str = self.date_row.get_text().strip()
-        if not date_str:
+        try:
+            date.fromisoformat(date_str)
+            self.date_row.remove_css_class("error")
+        except ValueError:
             self.date_row.add_css_class("error")
             return
-        self.date_row.remove_css_class("error")
 
         if not self._cat_ids:
             return
 
         cat_id = self._cat_ids[self.cat_row.get_selected()]
         amount = self.amount_row.get_value()
+        if amount <= 0:
+            self.amount_row.add_css_class("error")
+            return
+        self.amount_row.remove_css_class("error")
         description = self.desc_row.get_text().strip()
         user = self.budget.couple[self.user_row.get_selected()]
 
@@ -976,6 +997,7 @@ class AddRecurringDialog(Adw.Dialog):
         self.next_date_row.set_tooltip_text(
             "The entry will be auto-inserted on or after this date when you open the spending log."
         )
+        _add_today_btn(self.next_date_row)
         group.add(self.next_date_row)
 
         self.active_row = Adw.SwitchRow()

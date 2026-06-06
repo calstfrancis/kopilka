@@ -11,7 +11,7 @@ A couples budget planner built with GTK 4 and libadwaita. Designed for two-perso
 - **Discretionary spending** — per-category budgets with weekly/monthly/bi-weekly/semi-annual periods, rollover support, seasonal overrides, and colour-coded category pills
 - **One-time purchase pool** — log irregular purchases against an annual discretionary pool; dashboard tracks YTD spend and remaining allowance
 - **Recurring entries** — spending templates (weekly/biweekly/monthly) that auto-insert into the log
-- **Spending log** — date-filtered entry log grouped by date with category tagging
+- **Spending log** — date-filtered entry log grouped by date with category tagging and friendly date headers
 - **Reports** — donut charts, monthly bar charts, per-category trend rows, filterable by week / month / quarter / year
 - **Assets & savings goals** — TFSA, RRSP, chequing, and brokerage accounts with balance history and line charts; lightweight savings goal tracker
 - **Settings** — partner names, pCloud sync path, budget file location
@@ -43,7 +43,16 @@ sudo dnf install python3-gobject gtk4 libadwaita
 
 ## Installation
 
-### AppImage (recommended for end users)
+### RPM (Fedora / openSUSE)
+
+Download the latest `kopilka-*.x86_64.rpm` from the [Releases](https://github.com/calstfrancis/kopilka/releases) page and install it:
+
+```sh
+sudo dnf install kopilka-*.x86_64.rpm        # Fedora
+sudo zypper install kopilka-*.x86_64.rpm      # openSUSE
+```
+
+### AppImage (universal Linux)
 
 Download the latest `Kopilka-x86_64.AppImage` from the [Releases](https://github.com/calstfrancis/kopilka/releases) page, make it executable, and run it:
 

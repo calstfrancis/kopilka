@@ -15,6 +15,30 @@ from kopilka.logic.calculations import BudgetCalculator
 from kopilka.ui.charts import BalanceLineChart, DonutChart
 
 
+def _add_today_btn_savings(row) -> None:
+    btn = Gtk.Button()
+    btn.set_icon_name("go-jump-symbolic")
+    btn.set_tooltip_text("Set to today")
+    btn.add_css_class("flat")
+    btn.add_css_class("circular")
+    btn.set_valign(Gtk.Align.CENTER)
+    btn.connect("clicked", lambda _: row.set_text(date.today().isoformat()))
+    row.add_suffix(btn)
+
+
+def _confirm_delete_savings(heading: str, body: str, parent, on_confirm) -> None:
+    dlg = Adw.AlertDialog()
+    dlg.set_heading(heading)
+    dlg.set_body(body)
+    dlg.add_response("cancel", "Cancel")
+    dlg.add_response("delete", "Delete")
+    dlg.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
+    dlg.set_default_response("cancel")
+    dlg.set_close_response("cancel")
+    dlg.connect("response", lambda d, r: on_confirm() if r == "delete" else None)
+    dlg.present(parent)
+
+
 CHANGE_TYPES       = ["deposit", "withdrawal", "interest", "dividend",
                       "gain", "loss", "fee", "transfer", "other"]
 CHANGE_TYPE_LABELS = ["Deposit", "Withdrawal", "Interest earned",
@@ -268,6 +292,7 @@ class _UpdateBalanceDialog(Adw.Dialog):
         self.date_row = Adw.EntryRow()
         self.date_row.set_title("Date (YYYY-MM-DD)")
         self.date_row.set_text(date.today().isoformat())
+        _add_today_btn_savings(self.date_row)
         group.add(self.date_row)
 
         self.note_row = Adw.EntryRow()
@@ -500,7 +525,7 @@ class _DebtBalanceDialog(Adw.Dialog):
         new_bal = self.bal_row.get_value()
         self.debt.balance_history.append({
             "date":    date.today().isoformat(),
-            "balance": self.debt.balance,
+            "balance": new_bal,
             "note":    self.note_row.get_text().strip(),
         })
         self.debt.balance = new_bal
@@ -857,9 +882,11 @@ class SavingsView(Gtk.Box):
         _UpdateBalanceDialog(asset, self._saved).present(self.get_root())
 
     def _on_delete_asset(self, _btn, asset):
-        self.budget.assets.remove(asset)
-        self.on_change()
-        self.refresh()
+        def _do():
+            self.budget.assets.remove(asset)
+            self.on_change()
+            self.refresh()
+        _confirm_delete_savings("Remove Account?", f'"{asset.name}" and its full balance history will be permanently removed.', self.get_root(), _do)
 
     def _on_add_goal(self, _btn):
         _GoalDialog(self.budget, self._saved).present(self.get_root())
@@ -871,9 +898,11 @@ class SavingsView(Gtk.Box):
         _DepositDialog(goal, self._saved).present(self.get_root())
 
     def _on_delete_goal(self, _btn, goal):
-        self.budget.savings_goals.remove(goal)
-        self.on_change()
-        self.refresh()
+        def _do():
+            self.budget.savings_goals.remove(goal)
+            self.on_change()
+            self.refresh()
+        _confirm_delete_savings("Remove Goal?", f'"{goal.name}" will be permanently removed.', self.get_root(), _do)
 
     def _saved(self, _item):
         self.on_change()

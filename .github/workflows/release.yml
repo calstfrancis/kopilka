@@ -53,3 +53,53 @@ jobs:
           files: |
             Kopilka-*-x86_64.AppImage
             Kopilka-*-x86_64.AppImage.zsync
+
+  rpm:
+    name: Build RPM
+    runs-on: ubuntu-22.04
+    container:
+      image: fedora:41
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Parse version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install build tools
+        run: |
+          dnf install -y --setopt=install_weak_deps=False \
+            python3-devel python3-setuptools python3-wheel python3-pip \
+            rpm-build rpmdevtools
+
+      - name: Set up RPM tree
+        run: rpmdev-setuptree
+
+      - name: Create source tarball
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p kopilka-${VERSION}
+          cp -r kopilka pyproject.toml README.md CHANGELOG.md \
+            io.github.calstfrancis.kopilka.desktop \
+            kopilka-${VERSION}/
+          tar czf ~/rpmbuild/SOURCES/kopilka-${VERSION}.tar.gz kopilka-${VERSION}/
+
+      - name: Build RPM
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          rpmbuild -bb packaging/kopilka.spec \
+            --define "version ${VERSION}" \
+            --define "_rpmdir $(pwd)/dist"
+
+      - name: Locate RPM
+        id: find_rpm
+        run: echo "rpm=$(find dist -name '*.rpm' | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload RPM to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.find_rpm.outputs.rpm }}

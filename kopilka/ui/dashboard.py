@@ -348,8 +348,12 @@ class Dashboard(Gtk.Box):
         days_left = last_day - today.day
 
         if days_left <= 2 and budget.categories:
+            from kopilka.model.budget import ONE_TIME_CATEGORY_ID
             month_start = today.replace(day=1)
-            spent = sum(e.amount for e in budget.spending if e.date >= month_start.isoformat())
+            spent = sum(
+                e.amount for e in budget.spending
+                if e.date >= month_start.isoformat() and e.category_id != ONE_TIME_CATEGORY_ID
+            )
             monthly_budget = BudgetCalculator.monthly_category_budgets(budget)
             if monthly_budget > 0:
                 diff = monthly_budget - spent
@@ -364,7 +368,10 @@ class Dashboard(Gtk.Box):
             return
         elif budget.categories and budget.spending:
             last = max(budget.spending, key=lambda e: e.date)
-            days_since = (today - date.fromisoformat(last.date)).days
+            try:
+                days_since = (today - date.fromisoformat(last.date)).days
+            except ValueError:
+                days_since = 0
             if days_since >= 14:
                 self._banner.set_title(f"No spending logged in {days_since} days — keeping up?")
                 self._banner.set_revealed(True)

@@ -42,7 +42,8 @@ class AppWindow(Adw.ApplicationWindow):
     def __init__(self, application):
         super().__init__(application=application)
 
-        self.budget = load_budget()
+        self.budget, _load_err = load_budget()
+        self._load_error = _load_err
         self._budget_path = get_budget_path()
         self._load_mtime = SyncManager.get_file_mtime(self._budget_path)
         cfg = load_config()
@@ -252,6 +253,11 @@ class AppWindow(Adw.ApplicationWindow):
 
     def _on_startup(self):
         """Run once after window is mapped: wizard check then conflict check."""
+        if self._load_error:
+            toast = Adw.Toast()
+            toast.set_title(self._load_error)
+            toast.set_timeout(0)  # stay until dismissed
+            self._toast_overlay.add_toast(toast)
         if is_first_launch():
             from kopilka.ui.setup_wizard import SetupWizard
             SetupWizard(self.budget, self._on_wizard_complete).present(self)
@@ -304,7 +310,7 @@ class AppWindow(Adw.ApplicationWindow):
         if self._webdav.is_configured():
             threading.Thread(target=self._webdav_download_and_reload, daemon=True).start()
         else:
-            self.budget = load_budget()
+            self.budget, _ = load_budget()
             self._load_mtime = SyncManager.get_file_mtime(self._budget_path)
             self._refresh_all_views()
             toast = Adw.Toast()
@@ -325,7 +331,7 @@ class AppWindow(Adw.ApplicationWindow):
 
     def _finish_reload(self, success_msg: str | None, error_msg: str | None):
         if success_msg:
-            self.budget = load_budget()
+            self.budget, _ = load_budget()
             self._load_mtime = SyncManager.get_file_mtime(self._budget_path)
             self._refresh_all_views()
         toast = Adw.Toast()
@@ -517,7 +523,7 @@ class AppWindow(Adw.ApplicationWindow):
             from kopilka.logic.sync import SyncManager
             set_budget_path(path)
             self._budget_path = path
-            self.budget = load_budget()
+            self.budget, _ = load_budget()
             self._load_mtime = SyncManager.get_file_mtime(path)
             self._current_user = self.budget.couple[0] if self.budget.couple else "User 1"
             cfg = load_config()

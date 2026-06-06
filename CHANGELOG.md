@@ -2,6 +2,46 @@
 
 All notable changes to Kopilka are documented here.
 
+## [0.5.0] — 2026-06-06
+
+### Added
+
+**Delete confirmation dialogs**
+- Every destructive remove action (income source, expense, debt, category, spending entry, recurring entry, asset account, savings goal) now shows an `Adw.AlertDialog` before committing the deletion — no more accidental data loss
+
+**"Today" button on all date fields**
+- All date entry rows (spending log, income, expense, recurring entry, asset balance update) now have a jump-to-today icon button so the date can be reset in one click without retyping
+
+**Friendly date headers in spending log**
+- Date group separators now read "Saturday, June 6" instead of the raw ISO string "2026-06-06". The year is appended ("Saturday, June 6, 2025") when the entry is from a previous year
+
+**Budget load error notification**
+- If the budget JSON file is malformed or unreadable at startup, a persistent toast notification is now shown instead of silently starting with an empty budget
+
+### Fixed
+
+- **Debt balance history** (`savings.py`): `_DebtBalanceDialog` was recording the _old_ balance in the history entry instead of the new one — the history table now shows the correct balance for each logged date
+- **Dashboard crash** (`dashboard.py`): `date.fromisoformat()` called on the last spending entry's date without a guard — a malformed date string would crash the dashboard refresh; now wrapped in try/except
+- **End-of-month banner** (`dashboard.py`): the "month ends in N days" over/under calculation incorrectly included one-time purchase entries in the spending sum while comparing against category-only budgets; one-time entries are now excluded from that sum
+- **Spending date validation** (`forms.py`): the Log Spending dialog accepted any non-empty string as a date; it now validates with `date.fromisoformat()` and highlights the field red on invalid input
+- **Spending amount validation** (`forms.py`): the Log Spending dialog now rejects $0.00 entries and highlights the amount field red
+
+### Changed
+
+- `pyproject.toml` version bumped to 0.5.0
+
+---
+
+## [0.4.0-beta1] — 2026-06-03
+
+WebDAV sync overhaul and income model simplification.
+
+- WebDAV sync replaces pCloud-specific file-watching (`webdav_sync.py`)
+- Nova Scotia tax estimation removed — income is now entered as a gross amount
+- Conflict detection ported to work with WebDAV ETag comparison
+
+---
+
 ## [0.3.0] — 2026-06-02
 
 ### Added

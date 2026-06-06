@@ -31,21 +31,23 @@ def get_budget_path() -> str:
     return str(Path.home() / ".config" / "kopilka" / "budget.json")
 
 
-def load_budget() -> Budget:
-    """Load budget from JSON file."""
+def load_budget() -> tuple["Budget", str | None]:
+    """Load budget from JSON file. Returns (budget, error_message_or_None)."""
     budget_path = get_budget_path()
-    
+
     if os.path.exists(budget_path):
         try:
             with open(budget_path, 'r') as f:
                 data = json.load(f)
-                return Budget.from_dict(data)
+                return Budget.from_dict(data), None
+        except json.JSONDecodeError as e:
+            print(f"Error loading budget (JSON parse): {e}")
+            return Budget(), f"Budget file could not be read — JSON error: {e}"
         except Exception as e:
             print(f"Error loading budget: {e}")
-            return Budget()
-    
-    # Create new budget if not found
-    return Budget()
+            return Budget(), f"Budget file could not be read: {e}"
+
+    return Budget(), None
 
 
 def save_budget(budget: Budget) -> bool:
