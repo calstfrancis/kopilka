@@ -66,8 +66,19 @@ class AppWindow(Adw.ApplicationWindow):
 
         self._gost_provider = Gtk.CssProvider()
         try:
+            import shutil, os, subprocess
             font_ref = importlib.resources.files("kopilka.data.fonts").joinpath("gosttypeb.ttf")
-            PangoCairo.FontMap.get_default().add_font_file(str(font_ref))
+            with importlib.resources.as_file(font_ref) as font_path:
+                # Install to ~/.local/share/fonts/kopilka/ so fontconfig finds it
+                dest_dir = os.path.join(GLib.get_user_data_dir(), "fonts", "kopilka")
+                os.makedirs(dest_dir, exist_ok=True)
+                dest = os.path.join(dest_dir, "gosttypeb.ttf")
+                if not os.path.exists(dest):
+                    shutil.copy(str(font_path), dest)
+                    subprocess.run(["fc-cache", "-f", dest_dir],
+                                   capture_output=True, timeout=10)
+                # Also register directly with Pango
+                PangoCairo.FontMap.get_default().add_font_file(str(font_path))
             self._gost_provider.load_from_string("* { font-family: 'GOST type B', monospace; }")
         except Exception:
             self._gost_provider.load_from_string("* { font-family: monospace; }")
