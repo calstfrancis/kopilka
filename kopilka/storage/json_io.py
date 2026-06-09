@@ -24,7 +24,7 @@ def get_budget_path() -> str:
                 config = json.load(f)
                 if 'budget_path' in config:
                     return config['budget_path']
-        except:
+        except Exception:
             pass
     
     # Default to ~/.config/kopilka/budget.json

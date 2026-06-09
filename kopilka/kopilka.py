@@ -19,7 +19,11 @@ from kopilka.desktop_install import ensure_installed
 def main():
     """Main application entry point."""
     ensure_config_dir()
-    ensure_installed()
+    # ensure_installed is a no-op inside the Flatpak sandbox — the build
+    # already installed the desktop entry and icon via flatpak-builder.
+    import os
+    if not os.environ.get("FLATPAK_ID"):
+        ensure_installed()
     
     # Create application
     app = Adw.Application(

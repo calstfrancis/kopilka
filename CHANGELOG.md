@@ -2,6 +2,18 @@
 
 All notable changes to Kopilka are documented here.
 
+## [0.5.1] — 2026-06-09
+
+### Fixed
+- **App would not open on most systems** — the flatpak was built against GNOME Platform 50, which is not yet available on most Linux distributions. Downgraded to Platform 48 (matching Zerkalo and Rubric).
+- **GNOME taskbar icon mismatch** — the installed desktop file was missing `StartupWMClass`, causing the launcher icon and running window to appear as separate items in the dock/taskbar.
+- **Desktop integration ran inside Flatpak** — `ensure_installed()` (the bare-Python icon installer) was running even inside the Flatpak sandbox, where it is pointless and was writing a redundant `.desktop` file to `~/.local/share/applications/`.
+- **Recurring entry insertion caused double-render of the spending log** — inserting due recurring entries on `refresh()` triggered `on_change()` → `_refresh_all_views()` → `refresh()` a second time, rendering the list twice.
+- **Settings view showed stale values after budget reload** — partner names and bills look-ahead setting were not updated when the budget was reloaded from sync.
+- **Budget open/create errors were silently swallowed** — file permission errors, malformed JSON, and similar failures when opening or creating a budget file now show a persistent toast message.
+- **`_curr_cycle` monthly end-date formula** — replaced an implicit year-overflow trick with an explicit December check; same fix applied to `bills_due_soon`.
+- **Bare `except:` in `json_io.py`** — was catching `SystemExit` and `KeyboardInterrupt`; changed to `except Exception:`.
+
 ## [0.5.0] — 2026-06-06
 
 ### Added

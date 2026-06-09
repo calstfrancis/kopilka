@@ -9,3 +9,4 @@ Categories=Office;Finance;
 Terminal=false
 StartupNotify=true
 X-GNOME-SingleWindow=true
+StartupWMClass=kopilka

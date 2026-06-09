@@ -53,8 +53,10 @@ def _curr_cycle(period: str, today: date | None = None) -> tuple[date, date]:
 
     elif period == "monthly":
         start = today.replace(day=1)
-        total = start.year * 12 + start.month
-        end   = date(total // 12, total % 12 + 1, 1) - timedelta(days=1)
+        if start.month == 12:
+            end = date(start.year + 1, 1, 1) - timedelta(days=1)
+        else:
+            end = date(start.year, start.month + 1, 1) - timedelta(days=1)
         return start, end
 
     elif period == "semesterly":
@@ -377,9 +379,11 @@ class BudgetCalculator:
                 except ValueError:
                     continue   # e.g. due_day=31 in February
                 if due_date < today:
-                    total = today.year * 12 + today.month
                     try:
-                        due_date = date(total // 12, total % 12 + 1, due_day)
+                        if today.month == 12:
+                            due_date = date(today.year + 1, 1, due_day)
+                        else:
+                            due_date = date(today.year, today.month + 1, due_day)
                     except ValueError:
                         continue
 

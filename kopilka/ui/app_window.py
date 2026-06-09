@@ -474,6 +474,7 @@ class AppWindow(Adw.ApplicationWindow):
         self.log_view.refresh()
         self.reports_view.refresh()
         self.savings_view.refresh()
+        self.settings_view.refresh()
         self._refresh_sidebar_subtitle()
 
     def _refresh_sidebar_subtitle(self):
@@ -514,8 +515,11 @@ class AppWindow(Adw.ApplicationWindow):
             toast = Adw.Toast()
             toast.set_title(f"New budget created: {__import__('pathlib').Path(path).name}")
             self._toast_overlay.add_toast(toast)
-        except Exception:
-            pass
+        except Exception as e:
+            t = Adw.Toast()
+            t.set_title(f"Could not create budget: {e}")
+            t.set_timeout(0)
+            self._toast_overlay.add_toast(t)
 
     def _on_open_budget(self, _action, _param):
         dialog = Gtk.FileDialog()
@@ -543,8 +547,11 @@ class AppWindow(Adw.ApplicationWindow):
             toast = Adw.Toast()
             toast.set_title(f"Opened: {__import__('pathlib').Path(path).name}")
             self._toast_overlay.add_toast(toast)
-        except Exception:
-            pass
+        except Exception as e:
+            t = Adw.Toast()
+            t.set_title(f"Could not open budget: {e}")
+            t.set_timeout(0)
+            self._toast_overlay.add_toast(t)
 
     def _shortcut_log_purchase(self, _widget, _args):
         from kopilka.ui.forms import LogSpendingDialog

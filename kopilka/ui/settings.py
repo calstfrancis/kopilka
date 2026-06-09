@@ -191,6 +191,14 @@ class SettingsView(Gtk.ScrolledWindow):
         clear_spending_btn.connect("clicked", self._on_clear_spending)
         danger_group.add(clear_spending_btn)
 
+    # ── Refresh ────────────────────────────────────────────────────────────────
+
+    def refresh(self):
+        cfg = load_config()
+        self.user1_row.set_text(cfg.get("user1_name", self.budget.couple[0] if self.budget.couple else ""))
+        self.user2_row.set_text(cfg.get("user2_name", self.budget.couple[1] if len(self.budget.couple) > 1 else ""))
+        self._bills_spin.set_value(getattr(self.budget, "bills_look_ahead_days", 7))
+
     # ── Users ──────────────────────────────────────────────────────────────────
 
     def _on_save_users(self, _btn):

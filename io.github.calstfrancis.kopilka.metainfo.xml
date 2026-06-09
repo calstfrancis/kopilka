@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.calstfrancis.kopilka</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <name>Kopilka</name>
+  <summary>Couples budget planner with shared finance management</summary>
+
+  <description>
+    <p>
+      Kopilka is a GTK4 budget planner for two-person households. Track income,
+      fixed expenses, debt, discretionary spending, assets, and savings goals in
+      a shared JSON file that can be synced via pCloud or any shared folder.
+    </p>
+    <ul>
+      <li>Dashboard with income breakdown, net budget, bills calendar, net worth, and category spending bars</li>
+      <li>Income tracking for multiple sources per person</li>
+      <li>Fixed expenses with calendar view and next-due dates</li>
+      <li>Debt management with payoff projections and what-if extra payment slider</li>
+      <li>Discretionary spending with per-category budgets, rollover, and seasonal overrides</li>
+      <li>One-time purchase pool for irregular expenses</li>
+      <li>Recurring entries that auto-insert into the spending log</li>
+      <li>Spending log grouped by date with category tagging</li>
+      <li>Reports with donut charts, monthly bar charts, and per-category trends</li>
+      <li>Asset accounts with balance history and savings goal tracker</li>
+      <li>Sync via pCloud — detects external file changes on window focus and offers a one-click reload</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">io.github.calstfrancis.kopilka.desktop</launchable>
+
+  <url type="homepage">https://github.com/calstfrancis/kopilka</url>
+  <url type="bugtracker">https://github.com/calstfrancis/kopilka/issues</url>
+
+  <developer>
+    <name>Cal St Francis</name>
+  </developer>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="0.5.1" date="2026-06-09">
+      <description>
+        <p>Critical fix: app now opens correctly on all Linux distributions.</p>
+        <ul>
+          <li>Flatpak was built against GNOME Platform 50, which is not yet available on most systems — downgraded to Platform 48.</li>
+          <li>Desktop file missing StartupWMClass — launcher icon and window now group correctly in the taskbar.</li>
+          <li>Settings view showed stale partner names and bills look-ahead after a budget reload.</li>
+          <li>Budget open/create errors now show a toast instead of silently failing.</li>
+          <li>Recurring entry insertion no longer causes the spending log to render twice.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.5.0" date="2026-06-06">
+      <description>
+        <p>Delete confirmation dialogs, Today button on all date fields, friendly date headers in spending log, budget load error notification, and several bug fixes.</p>
+      </description>
+    </release>
+  </releases>
+</component>

@@ -179,9 +179,13 @@ class SpendingLogView(Gtk.Box):
         self.refresh()
 
     def refresh(self):
-        # Auto-insert recurring entries before rendering
+        # Insert any due recurring entries first. If new entries were added,
+        # on_change() saves and triggers a full _refresh_all_views which calls
+        # refresh() again with the updated data — return early to avoid a
+        # redundant second render of the same list.
         if _apply_recurring(self.budget):
             self.on_change()
+            return
 
         _clear_box(self.list_box)
 
