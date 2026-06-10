@@ -40,6 +40,19 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.5.4" date="2026-06-10">
+      <description>
+        <p>Bug fixes: calculations, data integrity, and feedback.</p>
+        <ul>
+          <li>Biweekly income and expense amounts now use the correct monthly conversion factor (26/12 instead of 2.165).</li>
+          <li>Recurring entries with a past next_date no longer freeze the app on open.</li>
+          <li>Monthly budget category overrides are no longer silently lost when the budget file is reloaded.</li>
+          <li>A toast is shown if the budget file cannot be saved (disk full, permissions error).</li>
+          <li>Deleting a category now shows how many spending entries will become "Unknown category".</li>
+          <li>Version number in the status bar and About dialog is now consistent.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.5.3" date="2026-06-10">
       <description>
         <p>Launch reliability fix.</p>

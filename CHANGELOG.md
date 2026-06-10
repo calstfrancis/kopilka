@@ -2,7 +2,7 @@
 
 All notable changes to Kopilka are documented here.
 
-## [0.5.4-rc1] — 2026-06-10
+## [0.5.4] — 2026-06-10
 
 ### Fixed
 - **Biweekly income/expense factor corrected** — was `× 2.165`, now `× 26/12` (≈ 2.1667); affects monthly totals, debt payoff projections, and unallocated amounts
