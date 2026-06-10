@@ -144,42 +144,10 @@ class AppWindow(Adw.ApplicationWindow):
             self._nav_listbox.append(row)
             self._nav_rows[page_id] = row
 
-        # ── Sidebar bottom toggles ────────────────────────────────────────────
-        sep = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        sidebar_box.append(sep)
-
-        toggles_lb = Gtk.ListBox()
-        toggles_lb.add_css_class("boxed-list")
-        toggles_lb.set_selection_mode(Gtk.SelectionMode.NONE)
-        toggles_lb.set_margin_top(8)
-        toggles_lb.set_margin_bottom(12)
-        toggles_lb.set_margin_start(8)
-        toggles_lb.set_margin_end(8)
-
-        simple_row = Adw.ActionRow()
-        simple_row.set_title("Simple")
-        simple_row.set_subtitle("Hide breakdown & bills")
-        self._simple_switch = Gtk.Switch(valign=Gtk.Align.CENTER)
-        self._simple_switch.connect("notify::active", self._on_simple_toggled)
-        simple_row.add_suffix(self._simple_switch)
-        simple_row.set_activatable_widget(self._simple_switch)
-        toggles_lb.append(simple_row)
-
-        gost_row = Adw.ActionRow()
-        gost_row.set_title("Gost Type B")
-        gost_row.set_subtitle("Technical drafting typeface")
-        self._gost_switch = Gtk.Switch(valign=Gtk.Align.CENTER)
-        self._gost_switch.connect("notify::active", self._on_font_toggled)
-        gost_row.add_suffix(self._gost_switch)
-        gost_row.set_activatable_widget(self._gost_switch)
-        toggles_lb.append(gost_row)
-
-        sidebar_box.append(toggles_lb)
-
         self._split_view.set_sidebar(sidebar_box)
 
         # ── Content area ─────────────────────────────────────────────────────
-        content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        content_tv = Adw.ToolbarView()
 
         content_header = Adw.HeaderBar()
 
@@ -199,22 +167,81 @@ class AppWindow(Adw.ApplicationWindow):
         self._sync_spinner.set_visible(False)
         content_header.pack_end(self._sync_spinner)
 
-        content_box.append(content_header)
+        content_tv.add_top_bar(content_header)
 
         # Reload banner (hidden until a newer version of the file is detected)
         self._reload_banner = Adw.Banner()
         self._reload_banner.set_button_label("Reload")
         self._reload_banner.connect("button-clicked", self._on_reload_clicked)
-        content_box.append(self._reload_banner)
 
         self._stack = Gtk.Stack()
         self._stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
         self._stack.set_transition_duration(150)
         self._stack.set_hexpand(True)
         self._stack.set_vexpand(True)
-        content_box.append(self._stack)
 
-        self._split_view.set_content(content_box)
+        inner_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        inner_box.append(self._reload_banner)
+        inner_box.append(self._stack)
+        content_tv.set_content(inner_box)
+
+        # ── Status bar ────────────────────────────────────────────────────────
+        self._simple_active = False
+        self._gost_active = False
+
+        def _status_toggle_btn(label_text, tooltip):
+            lbl = Gtk.Label()
+            lbl.add_css_class("caption")
+            lbl.set_use_markup(True)
+            lbl.set_margin_top(3)
+            lbl.set_margin_bottom(3)
+            lbl.set_text(label_text)
+            btn = Gtk.Button()
+            btn.set_child(lbl)
+            btn.add_css_class("flat")
+            btn.set_tooltip_text(tooltip)
+            btn.set_margin_start(2)
+            btn.set_margin_end(2)
+            return btn, lbl
+
+        def _sb_sep():
+            s = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
+            s.set_margin_start(4)
+            s.set_margin_end(4)
+            s.set_margin_top(6)
+            s.set_margin_bottom(6)
+            return s
+
+        status_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        status_bar.add_css_class("toolbar")
+
+        self._simple_status_btn, self._simple_status_lbl = _status_toggle_btn(
+            "SIMPLE", "Simple mode — hides expense breakdown and bills calendar")
+        self._simple_status_btn.connect("clicked", self._on_simple_status_clicked)
+        status_bar.append(self._simple_status_btn)
+        status_bar.append(_sb_sep())
+
+        self._gost_status_btn, self._gost_status_lbl = _status_toggle_btn(
+            "GOST", "Toggle GOST Type B engineering font for the whole UI")
+        self._gost_status_btn.connect("clicked", self._on_gost_status_clicked)
+        status_bar.append(self._gost_status_btn)
+
+        _spacer = Gtk.Box()
+        _spacer.set_hexpand(True)
+        status_bar.append(_spacer)
+
+        ver_btn = Gtk.Button(label="v0.5.1")
+        ver_btn.add_css_class("flat")
+        ver_btn.add_css_class("dim-label")
+        ver_btn.add_css_class("caption")
+        ver_btn.set_margin_end(4)
+        ver_btn.set_tooltip_text("About Kopilka / view changelog")
+        ver_btn.connect("clicked", lambda _: self._open_changelog())
+        status_bar.append(ver_btn)
+
+        content_tv.add_bottom_bar(status_bar)
+
+        self._split_view.set_content(content_tv)
 
         # ── Views ─────────────────────────────────────────────────────────────
         self.dashboard = Dashboard(self.budget, on_change=self._on_budget_change)
@@ -559,20 +586,56 @@ class AppWindow(Adw.ApplicationWindow):
         LogSpendingDialog(self.budget, on_saved=self._on_budget_change).present(self)
         return True
 
-    def _on_font_toggled(self, switch, _param):
+    def _on_simple_status_clicked(self, _btn):
+        self._simple_active = not self._simple_active
+        self._apply_simple_mode()
+
+    def _apply_simple_mode(self):
+        if self._simple_active:
+            self._simple_status_lbl.set_markup("<b>SIMPLE</b>")
+        else:
+            self._simple_status_lbl.set_text("SIMPLE")
+        self.dashboard.set_simple_mode(self._simple_active)
+
+    def _on_gost_status_clicked(self, _btn):
+        self._gost_active = not self._gost_active
+        self._apply_gost_mode()
+
+    def _apply_gost_mode(self):
         display = self.get_display()
-        if switch.get_active():
+        if self._gost_active:
+            self._gost_status_lbl.set_markup("<b>GOST</b>")
             Gtk.StyleContext.add_provider_for_display(
                 display, self._gost_provider,
                 Gtk.STYLE_PROVIDER_PRIORITY_USER,
             )
         else:
+            self._gost_status_lbl.set_text("GOST")
             Gtk.StyleContext.remove_provider_for_display(
                 display, self._gost_provider,
             )
 
-    def _on_simple_toggled(self, switch, _param):
-        self.dashboard.set_simple_mode(switch.get_active())
-
     def add_toast(self, toast):
         self._toast_overlay.add_toast(toast)
+
+    def _open_changelog(self):
+        about = Adw.AboutDialog()
+        about.set_application_name("Kopilka")
+        about.set_version("0.5.1")
+        about.set_developer_name("Cal St Francis")
+        about.set_application_icon("io.github.calstfrancis.kopilka")
+        about.set_issue_url("https://github.com/calstfrancis/kopilka/issues")
+        about.set_website("https://github.com/calstfrancis/kopilka")
+        about.set_license_type(Gtk.License.GPL_3_0)
+        about.set_release_notes_version("0.5.1")
+        about.set_release_notes(
+            "<p>Critical fix: app now opens correctly on all Linux distributions.</p>"
+            "<ul>"
+            "<li>Flatpak was built against GNOME Platform 50 — downgraded to Platform 48.</li>"
+            "<li>Desktop file now includes StartupWMClass for correct taskbar grouping.</li>"
+            "<li>Settings view refreshes partner names and bills look-ahead on budget reload.</li>"
+            "<li>Budget open/create errors now show a toast instead of silently failing.</li>"
+            "<li>Recurring entry insertion no longer causes the spending log to render twice.</li>"
+            "</ul>"
+        )
+        about.present(self)
