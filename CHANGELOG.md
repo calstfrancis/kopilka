@@ -2,6 +2,12 @@
 
 All notable changes to Kopilka are documented here.
 
+## [0.5.2] — 2026-06-09
+
+### Added
+- **Status bar** — new bottom bar with SIMPLE and GOST toggle buttons (replaces the sidebar switches), matching the layout in Rubric and Zerkalo. Active toggles appear bold; inactive toggles are dimmed.
+- **About / changelog dialog** — version chip `v0.5.2` on the right of the status bar opens the standard GNOME About dialog with release notes.
+
 ## [0.5.1] — 2026-06-09
 
 ### Fixed

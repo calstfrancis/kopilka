@@ -230,7 +230,7 @@ class AppWindow(Adw.ApplicationWindow):
         _spacer.set_hexpand(True)
         status_bar.append(_spacer)
 
-        ver_btn = Gtk.Button(label="v0.5.1")
+        ver_btn = Gtk.Button(label="v0.5.2")
         ver_btn.add_css_class("flat")
         ver_btn.add_css_class("dim-label")
         ver_btn.add_css_class("caption")
@@ -621,21 +621,19 @@ class AppWindow(Adw.ApplicationWindow):
     def _open_changelog(self):
         about = Adw.AboutDialog()
         about.set_application_name("Kopilka")
-        about.set_version("0.5.1")
+        about.set_version("0.5.2")
         about.set_developer_name("Cal St Francis")
         about.set_application_icon("io.github.calstfrancis.kopilka")
         about.set_issue_url("https://github.com/calstfrancis/kopilka/issues")
         about.set_website("https://github.com/calstfrancis/kopilka")
         about.set_license_type(Gtk.License.GPL_3_0)
-        about.set_release_notes_version("0.5.1")
+        about.set_release_notes_version("0.5.2")
         about.set_release_notes(
-            "<p>Critical fix: app now opens correctly on all Linux distributions.</p>"
+            "<p>Status bar with toggles and about dialog.</p>"
             "<ul>"
-            "<li>Flatpak was built against GNOME Platform 50 — downgraded to Platform 48.</li>"
-            "<li>Desktop file now includes StartupWMClass for correct taskbar grouping.</li>"
-            "<li>Settings view refreshes partner names and bills look-ahead on budget reload.</li>"
-            "<li>Budget open/create errors now show a toast instead of silently failing.</li>"
-            "<li>Recurring entry insertion no longer causes the spending log to render twice.</li>"
+            "<li>New status bar at the bottom of the window with SIMPLE and GOST toggle buttons — replaces the sidebar switches.</li>"
+            "<li>Active toggles appear bold; inactive toggles are dimmed.</li>"
+            "<li>Version chip on the right opens this About dialog with release notes.</li>"
             "</ul>"
         )
         about.present(self)

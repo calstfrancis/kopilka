@@ -40,6 +40,16 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.5.2" date="2026-06-09">
+      <description>
+        <p>Status bar with toggles and about dialog.</p>
+        <ul>
+          <li>New status bar at the bottom of the window with SIMPLE and GOST toggle buttons — replaces the sidebar switches.</li>
+          <li>Active toggles appear bold; inactive toggles are dimmed — consistent with Rubric and Zerkalo.</li>
+          <li>Version chip on the right opens the GNOME About dialog with release notes.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.5.1" date="2026-06-09">
       <description>
         <p>Critical fix: app now opens correctly on all Linux distributions.</p>
