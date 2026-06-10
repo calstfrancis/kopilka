@@ -2,6 +2,12 @@
 
 All notable changes to Kopilka are documented here.
 
+## [0.5.3] — 2026-06-10
+
+### Fixed
+- **App would not open from GNOME launcher or Discover** — a background test process was holding the D-Bus name, but the underlying issue was that `on_activate` always created a new window instead of raising the existing one on repeated launches. Subsequent launcher clicks now bring the existing window to the front.
+- **"Savings & Investments" label caused a GTK markup warning** — `Adw.ActionRow.set_title()` parses Pango markup, so the bare `&` was rejected; escaped to `&amp;`.
+
 ## [0.5.2] — 2026-06-09
 
 ### Added

@@ -32,7 +32,10 @@ def main():
     )
     
     def on_activate(application):
-        """Activate the application."""
+        windows = application.get_windows()
+        if windows:
+            windows[0].present()
+            return
         window = AppWindow(application)
         window.present()
     

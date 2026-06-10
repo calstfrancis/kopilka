@@ -243,7 +243,7 @@ class Dashboard(Gtk.Box):
         nw_exp.set_expanded(self._nw_expanded)
 
         sav_row = Adw.ActionRow()
-        sav_row.set_title("Savings & Investments")
+        sav_row.set_title("Savings &amp; Investments")
         sav_row.add_suffix(_make_amount_label(f"${total_sav:,.2f}", "success"))
         nw_exp.add_row(sav_row)
 

@@ -40,6 +40,15 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.5.3" date="2026-06-10">
+      <description>
+        <p>Launch reliability fix.</p>
+        <ul>
+          <li>App now opens correctly from the GNOME launcher and Discover — repeated launches raise the existing window instead of failing silently.</li>
+          <li>Fixed a GTK markup warning caused by a bare ampersand in the "Savings &amp; Investments" dashboard label.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.5.2" date="2026-06-09">
       <description>
         <p>Status bar with toggles and about dialog.</p>
