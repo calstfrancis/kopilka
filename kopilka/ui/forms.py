@@ -866,14 +866,15 @@ class LogSpendingDialog(Adw.Dialog):
 
         self.user_row = Adw.ComboRow()
         self.user_row.set_title("Who paid?")
+        _couple = budget.couple or ["User 1"]
         user_model = Gtk.StringList()
-        for u in budget.couple:
+        for u in _couple:
             user_model.append(u)
         self.user_row.set_model(user_model)
-        if existing and existing.user in budget.couple:
-            self.user_row.set_selected(budget.couple.index(existing.user))
-        elif preset_user and preset_user in budget.couple:
-            self.user_row.set_selected(budget.couple.index(preset_user))
+        if existing and existing.user in _couple:
+            self.user_row.set_selected(_couple.index(existing.user))
+        elif preset_user and preset_user in _couple:
+            self.user_row.set_selected(_couple.index(preset_user))
         group.add(self.user_row)
 
     def _on_save(self, _btn):
@@ -895,7 +896,8 @@ class LogSpendingDialog(Adw.Dialog):
             return
         self.amount_row.remove_css_class("error")
         description = self.desc_row.get_text().strip()
-        user = self.budget.couple[self.user_row.get_selected()]
+        _couple = self.budget.couple or ["User 1"]
+        user = _couple[min(self.user_row.get_selected(), len(_couple) - 1)]
 
         if self.existing:
             self.existing.date = date_str

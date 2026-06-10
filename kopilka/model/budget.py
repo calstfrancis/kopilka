@@ -263,20 +263,20 @@ class Budget:
                 i.pop("is_taxed", None)
                 i.pop("cpp_ei_applicable", None)
                 budget.income.append(IncomeSource(**i))
-            except TypeError:
-                pass
+            except (TypeError, ValueError, KeyError) as e:
+                print(f"kopilka: skipped invalid income item: {e}")
 
         for e in data.get("expenses_fixed", []):
             try:
                 budget.expenses_fixed.append(FixedExpense(**e))
-            except TypeError:
-                pass
+            except (TypeError, ValueError, KeyError) as e:
+                print(f"kopilka: skipped invalid expense item: {e}")
 
         for d in data.get("debt", []):
             try:
                 budget.debt.append(Debt(**d))
-            except TypeError:
-                pass
+            except (TypeError, ValueError, KeyError) as e:
+                print(f"kopilka: skipped invalid debt item: {e}")
 
         for c in data.get("categories", []):
             try:
@@ -284,35 +284,38 @@ class Budget:
                 if "budget_weekly" in cat and "budget_amount" not in cat:
                     cat["budget_amount"] = cat.pop("budget_weekly")
                     cat.setdefault("budget_period", "weekly")
-                # Convert monthly_overrides string keys → int
+                # Convert monthly_overrides string keys → int; tolerate malformed data
                 raw_ov = cat.pop("monthly_overrides", {})
-                cat["monthly_overrides"] = {int(k): float(v) for k, v in raw_ov.items()}
+                try:
+                    cat["monthly_overrides"] = {int(k): float(v) for k, v in raw_ov.items()}
+                except (TypeError, ValueError):
+                    cat["monthly_overrides"] = {}
                 budget.categories.append(SpendingCategory(**cat))
-            except TypeError:
-                pass
+            except (TypeError, ValueError, KeyError) as e:
+                print(f"kopilka: skipped invalid category item: {e}")
 
         for s in data.get("spending", []):
             try:
                 budget.spending.append(SpendingEntry(**s))
-            except TypeError:
-                pass
+            except (TypeError, ValueError, KeyError) as e:
+                print(f"kopilka: skipped invalid spending entry: {e}")
 
         for g in data.get("savings_goals", []):
             try:
                 budget.savings_goals.append(SavingsGoal(**g))
-            except TypeError:
-                pass
+            except (TypeError, ValueError, KeyError) as e:
+                print(f"kopilka: skipped invalid savings goal: {e}")
 
         for a in data.get("assets", []):
             try:
                 budget.assets.append(Asset(**a))
-            except TypeError:
-                pass
+            except (TypeError, ValueError, KeyError) as e:
+                print(f"kopilka: skipped invalid asset: {e}")
 
         for r in data.get("recurring", []):
             try:
                 budget.recurring.append(RecurringEntry(**r))
-            except TypeError:
-                pass
+            except (TypeError, ValueError, KeyError) as e:
+                print(f"kopilka: skipped invalid recurring entry: {e}")
 
         return budget

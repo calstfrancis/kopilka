@@ -15,6 +15,7 @@ from kopilka.ui.spending_log import SpendingLogView
 from kopilka.ui.reports import ReportsView
 from kopilka.ui.savings import SavingsView
 from kopilka.ui.settings import SettingsView
+from kopilka import __version__ as _APP_VERSION
 from kopilka.storage.json_io import (
     load_budget, save_budget, is_first_launch,
     get_budget_path, load_config, save_config,
@@ -230,7 +231,7 @@ class AppWindow(Adw.ApplicationWindow):
         _spacer.set_hexpand(True)
         status_bar.append(_spacer)
 
-        ver_btn = Gtk.Button(label="v0.5.3")
+        ver_btn = Gtk.Button(label=f"v{_APP_VERSION}")
         ver_btn.add_css_class("flat")
         ver_btn.add_css_class("dim-label")
         ver_btn.add_css_class("caption")
@@ -470,7 +471,11 @@ class AppWindow(Adw.ApplicationWindow):
 
     def _on_budget_change(self):
         SyncManager.update_metadata(self.budget, self._current_user)
-        save_budget(self.budget)
+        if not save_budget(self.budget):
+            toast = Adw.Toast()
+            toast.set_title("Could not save budget — check disk space and permissions")
+            toast.set_timeout(0)
+            self._toast_overlay.add_toast(toast)
         self._load_mtime = SyncManager.get_file_mtime(self._budget_path)
         self._reload_banner.set_revealed(False)
         self._refresh_all_views()
@@ -621,13 +626,13 @@ class AppWindow(Adw.ApplicationWindow):
     def _open_changelog(self):
         about = Adw.AboutDialog()
         about.set_application_name("Kopilka")
-        about.set_version("0.5.3")
+        about.set_version(_APP_VERSION)
         about.set_developer_name("Cal St Francis")
         about.set_application_icon("io.github.calstfrancis.kopilka")
         about.set_issue_url("https://github.com/calstfrancis/kopilka/issues")
         about.set_website("https://github.com/calstfrancis/kopilka")
         about.set_license_type(Gtk.License.GPL_3_0)
-        about.set_release_notes_version("0.5.3")
+        about.set_release_notes_version(_APP_VERSION)
         about.set_release_notes(
             "<p>Launch reliability fix.</p>"
             "<ul>"

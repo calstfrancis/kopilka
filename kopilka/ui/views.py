@@ -702,11 +702,19 @@ class CategoryView(Gtk.Box):
         AddCategoryDialog(self.budget, on_saved=self._saved, existing=cat).present(self.get_root())
 
     def _on_delete(self, _btn, cat):
+        orphans = sum(1 for e in self.budget.spending if e.category_id == cat.id)
+        body = f'"{cat.name}" and all its budget settings will be permanently removed.'
+        if orphans:
+            body += (
+                f"\n\n{orphans} spending {'entry' if orphans == 1 else 'entries'} logged "
+                "under this category will remain in your history but will show as "
+                "“Unknown category”."
+            )
         def _do():
             self.budget.categories.remove(cat)
             self.on_change()
             self.refresh()
-        _confirm_delete("Remove Category?", f'"{cat.name}" and all its budget settings will be permanently removed.', self.get_root(), _do)
+        _confirm_delete("Remove Category?", body, self.get_root(), _do)
 
     def _saved(self, _item):
         self.on_change()

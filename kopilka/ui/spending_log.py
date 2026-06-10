@@ -66,7 +66,9 @@ def _apply_recurring(budget) -> bool:
     for rec in budget.recurring:
         if not rec.active:
             continue
-        while rec.next_date <= today:
+        iterations = 0
+        while rec.next_date <= today and iterations < 730:
+            iterations += 1
             entry = SpendingEntry(
                 date=rec.next_date,
                 category_id=rec.category_id,
@@ -91,6 +93,10 @@ def _apply_recurring(budget) -> bool:
                     d = d.replace(year=y, month=m, day=calendar.monthrange(y, m)[1])
             rec.next_date = d.isoformat()
             inserted = True
+        if rec.next_date <= today:
+            # next_date is still in the past after the iteration cap —
+            # clamp forward so the loop doesn't re-trigger on next open
+            rec.next_date = date.today().isoformat()
     return inserted
 
 

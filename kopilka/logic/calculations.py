@@ -326,8 +326,9 @@ class BudgetCalculator:
         except ValueError:
             return None
         today = date.today()
-        while ref < today:
-            ref += timedelta(days=14)
+        if ref < today:
+            delta_days = (today - ref).days
+            ref += timedelta(days=((delta_days // 14) + 1) * 14)
         return ref
 
     # ── Bill reminders ───────────────────────────────────────────────────────
@@ -401,7 +402,7 @@ class BudgetCalculator:
     def _to_monthly(amount: float, frequency: str) -> float:
         freq_map = {
             "weekly":     lambda x: x * 4.33,
-            "biweekly":   lambda x: x * 2.165,
+            "biweekly":   lambda x: x * 26 / 12,
             "monthly":    lambda x: x,
             "semesterly": lambda x: x * 2 / 12,
             "yearly":     lambda x: x / 12,

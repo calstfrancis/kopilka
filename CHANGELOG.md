@@ -2,6 +2,21 @@
 
 All notable changes to Kopilka are documented here.
 
+## [0.5.4-rc1] — 2026-06-10
+
+### Fixed
+- **Biweekly income/expense factor corrected** — was `× 2.165`, now `× 26/12` (≈ 2.1667); affects monthly totals, debt payoff projections, and unallocated amounts
+- **Recurring entry loop bomb** — if a recurring entry's `next_date` was set far in the past, the app would insert hundreds of entries and freeze; capped at 730 insertions, then clamps `next_date` to today
+- **Biweekly payday O(1) calculation** — `next_biweekly_payday()` used an unbounded while-loop; replaced with direct arithmetic
+- **Monthly budget override silently lost on load** — `{str → int}` key conversion failure would drop the entire category; bad overrides now fall back to `{}` instead of losing the category
+- **Save failure now shown to user** — `save_budget()` returning `False` previously went unnoticed; a persistent toast is now shown
+- **Silent item discard on load now logged** — corrupted JSON items are printed to stderr instead of disappearing silently
+- **Delete category warns about orphaned spending** — confirmation dialog now shows how many spending entries will show as "Unknown category"
+- **"Who paid?" crash on empty couple list** — guarded against a budget file with an empty couple array
+- **Version string unified** — status bar and About dialog now read from `__version__`; `__init__.py` was stale at `0.1.0`
+
+---
+
 ## [0.5.3] — 2026-06-10
 
 ### Fixed
