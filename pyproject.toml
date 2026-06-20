@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kopilka"
-version = "0.5.5-dev1"
+version = "0.5.5"
 description = "Kopilka — couples budget planner with shared finance management"
 readme = "README.md"
 license = {text = "GPL-3.0"}

@@ -2,7 +2,7 @@
 
 All notable changes to Kopilka are documented here.
 
-## [0.5.5-dev1] — bug-fix pass
+## [0.5.5] "Level Ledger" — math, crash, and UX fixes
 
 ### Fixed
 - **Annual one-time pool was wildly overstated** — the pool was calculated as `available_to_spend × 12` which includes money already allocated to spending categories; now uses `unallocated_discretionary × 12` so the pool reflects only genuinely free funds

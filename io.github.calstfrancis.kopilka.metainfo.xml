@@ -40,6 +40,26 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.5.5" date="2026-06-20">
+      <description>
+        <p>"Level Ledger" — math corrections, crash fixes, and UX clarity improvements.</p>
+        <ul>
+          <li>Annual one-time purchase pool now correctly uses unallocated discretionary funds, not the full pre-category discretionary amount.</li>
+          <li>Debt avalanche and snowball strategies now model payment cascade — freed payments from a paid-off debt roll into the next priority debt.</li>
+          <li>Recurring entries no longer risk crashing the app at startup; processing is now owned by the main window after all views are initialised, and also fires when the window regains focus.</li>
+          <li>Budget saves are now atomic (temp-file + rename) — a crash during write can no longer corrupt budget.json.</li>
+          <li>Category color pills with light backgrounds (yellow, stone) now use black text for legibility.</li>
+          <li>CSV export from the spending log now respects the active time filter instead of always exporting full history.</li>
+          <li>One-time date fields in income and expense forms now validate the ISO date before saving.</li>
+          <li>Monthly Reports summary now applies seasonal budget overrides for the current month.</li>
+          <li>Monthly trend bars now show category spending only; fixed one-time expenses are annotated separately.</li>
+          <li>Dashboard category rows now display the time window (e.g. "week of 16 Jun") so mixed weekly/monthly rows are unambiguous.</li>
+          <li>Bill reminders now show billing frequency in the subtitle and per-period unit on the amount.</li>
+          <li>Income rows now display the per-period unit (e.g. $3,500/2wk).</li>
+          <li>Income amount field now prompts to enter take-home (after-tax) pay.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.5.4" date="2026-06-10">
       <description>
         <p>Bug fixes: calculations, data integrity, and feedback.</p>
