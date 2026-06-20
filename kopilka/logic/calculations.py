@@ -272,37 +272,110 @@ class BudgetCalculator:
     # ── Debt avalanche / snowball ────────────────────────────────────────────
 
     @staticmethod
-    def debt_avalanche(budget) -> list[dict]:
+    def debt_avalanche(budget) -> tuple[list[dict], float]:
         """
-        Optimal payoff order (highest APR first).
-        Returns list of dicts with order, debt, and total interest.
+        Cascaded payoff — highest APR first.
+        When a debt is cleared its freed payment rolls into the next.
+        Returns (ordered list of dicts, total interest paid).
         """
-        return BudgetCalculator._debt_payoff_strategy(budget, key=lambda d: -d.rate)
+        return BudgetCalculator._debt_payoff_cascade(budget, key=lambda d: -d.rate)
 
     @staticmethod
-    def debt_snowball(budget) -> list[dict]:
-        """Motivation-based payoff order (lowest balance first)."""
-        return BudgetCalculator._debt_payoff_strategy(budget, key=lambda d: d.balance)
+    def debt_snowball(budget) -> tuple[list[dict], float]:
+        """
+        Cascaded payoff — lowest balance first.
+        Returns (ordered list of dicts, total interest paid).
+        """
+        return BudgetCalculator._debt_payoff_cascade(budget, key=lambda d: d.balance)
 
     @staticmethod
-    def _debt_payoff_strategy(budget, key) -> list[dict]:
-        debts = sorted(budget.debt, key=key)
+    def _debt_payoff_cascade(budget, key) -> tuple[list[dict], float]:
+        """
+        Month-by-month simulation of cascaded debt payoff.
+
+        The first unpaid debt (in priority order) receives its minimum payment
+        plus any extra freed from already-paid debts.  All other active debts
+        pay only their own minimums.  When the focus debt is cleared, its freed
+        payment is added to the running extra pool and the next debt becomes
+        the new focus.
+        """
+        sorted_debts = sorted(budget.debt, key=key)
+        n = len(sorted_debts)
+        if n == 0:
+            return [], 0.0
+
+        balances    = [float(d.balance) for d in sorted_debts]
+        rates       = [d.rate / 100 / 12  for d in sorted_debts]
+        base_pmts   = [BudgetCalculator._to_monthly(d.payment, d.frequency)
+                       for d in sorted_debts]
+
+        payoff_month   = [None] * n
+        total_interest = [0.0]  * n
+        warnings       = [None] * n
+
+        for i in range(n):
+            if base_pmts[i] <= 0:
+                warnings[i] = "No payment set"
+            elif rates[i] > 0 and base_pmts[i] <= balances[i] * rates[i]:
+                warnings[i] = (
+                    f"Payment ${base_pmts[i]:,.2f} doesn't cover "
+                    f"monthly interest ${balances[i] * rates[i]:,.2f}"
+                )
+
+        extra_pool = 0.0  # cumulative freed payments that cascade to the focus debt
+
+        for month in range(1, 601):
+            # Focus = first unpaid, payable debt in priority order
+            focus = next(
+                (i for i in range(n) if balances[i] > 0.001 and not warnings[i]),
+                None,
+            )
+
+            for i in range(n):
+                if balances[i] <= 0.001 or warnings[i]:
+                    continue
+                pmt      = base_pmts[i] + (extra_pool if i == focus else 0.0)
+                interest = balances[i] * rates[i]
+                total_interest[i] += interest
+                paid      = min(pmt, balances[i] + interest)
+                balances[i] = max(0.0, balances[i] + interest - paid)
+                if balances[i] <= 0.001:
+                    balances[i] = 0.0
+                    if payoff_month[i] is None:
+                        payoff_month[i] = month
+                        extra_pool += base_pmts[i]
+
+            if all(balances[i] <= 0.001 or warnings[i] for i in range(n)):
+                break
+
+        today  = date.today()
         result = []
-        for i, debt in enumerate(debts):
-            p = BudgetCalculator.debt_payoff(debt)
-            result.append({
-                "order": i + 1,
-                "debt":  debt,
-                "months": p["months"],
-                "total_interest": p["total_interest"],
-                "payoff_date": p["payoff_date"],
-                "warning": p["warning"],
-            })
-        # Total interest across all debts in this strategy
-        total_interest = sum(
-            r["total_interest"] for r in result if r["total_interest"] is not None
-        )
-        return result, total_interest
+        for i, d in enumerate(sorted_debts):
+            if warnings[i]:
+                result.append({
+                    "order": i + 1, "debt": d,
+                    "months": None, "total_interest": None,
+                    "payoff_date": None, "warning": warnings[i],
+                })
+            elif payoff_month[i] is None:
+                result.append({
+                    "order": i + 1, "debt": d,
+                    "months": None, "total_interest": None,
+                    "payoff_date": None, "warning": "Payoff exceeds 50-year model limit",
+                })
+            else:
+                pm = payoff_month[i]
+                m  = today.month - 1 + pm
+                result.append({
+                    "order": i + 1, "debt": d,
+                    "months": pm,
+                    "total_interest": round(total_interest[i], 2),
+                    "payoff_date": date(today.year + m // 12, m % 12 + 1, 1),
+                    "warning": None,
+                })
+
+        total = sum(r["total_interest"] for r in result if r["total_interest"] is not None)
+        return result, round(total, 2)
 
     # ── One-time purchase pool ───────────────────────────────────────────────
 

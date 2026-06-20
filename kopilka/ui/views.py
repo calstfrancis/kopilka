@@ -194,7 +194,11 @@ class IncomeView(Gtk.Box):
                 parts.append("inactive")
             row.set_subtitle("  ·  ".join(parts))
 
-            amt = Gtk.Label(label=f"${inc.amount:,.2f}")
+            _FREQ_ABBR = {
+                "weekly": "/wk", "biweekly": "/2wk", "monthly": "/mo",
+                "semesterly": "/sem", "yearly": "/yr", "once": " (one-time)",
+            }
+            amt = Gtk.Label(label=f"${inc.amount:,.2f}{_FREQ_ABBR.get(inc.frequency, '')}")
             amt.add_css_class("numeric")
             amt.set_valign(Gtk.Align.CENTER)
             row.add_suffix(amt)

@@ -51,21 +51,28 @@ def load_budget() -> tuple["Budget", str | None]:
 
 
 def save_budget(budget: Budget) -> bool:
-    """Save budget to JSON file."""
+    """Save budget to JSON file atomically (temp-file + rename)."""
+    import tempfile
     budget_path = get_budget_path()
-    
+    tmp_path = None
     try:
-        # Ensure directory exists
         Path(budget_path).parent.mkdir(parents=True, exist_ok=True)
-        
-        # Save to file
-        with open(budget_path, 'w') as f:
-            data = budget.to_dict()
-            json.dump(data, f, indent=2)
-        
+        data = budget.to_dict()
+        parent = Path(budget_path).parent
+        with tempfile.NamedTemporaryFile(
+            mode='w', dir=parent, suffix='.tmp', delete=False, encoding='utf-8'
+        ) as tmp:
+            json.dump(data, tmp, indent=2)
+            tmp_path = tmp.name
+        os.replace(tmp_path, budget_path)
         return True
     except Exception as e:
         print(f"Error saving budget: {e}")
+        if tmp_path:
+            try:
+                Path(tmp_path).unlink(missing_ok=True)
+            except OSError:
+                pass
         return False
 
 

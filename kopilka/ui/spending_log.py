@@ -43,15 +43,28 @@ FILTER_OPTIONS = [
 ]
 
 
+def _pill_fg(hex_color: str) -> str:
+    """Return 'black' or 'white' for legible text on the given background."""
+    try:
+        r = int(hex_color[1:3], 16) / 255
+        g = int(hex_color[3:5], 16) / 255
+        b = int(hex_color[5:7], 16) / 255
+        luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+        return "black" if luminance > 0.35 else "white"
+    except (ValueError, IndexError):
+        return "white"
+
+
 def _colored_pill(text: str, hex_color: str) -> Gtk.Label:
     """Small label with an optional coloured background pill."""
     lbl = Gtk.Label(label=text)
     lbl.add_css_class("caption")
     lbl.set_valign(Gtk.Align.CENTER)
     if hex_color:
+        fg = _pill_fg(hex_color)
         provider = Gtk.CssProvider()
         provider.load_from_string(
-            f"label{{background:{hex_color};color:white;"
+            f"label{{background:{hex_color};color:{fg};"
             f"border-radius:4px;padding:1px 6px;}}"
         )
         lbl.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
@@ -185,14 +198,6 @@ class SpendingLogView(Gtk.Box):
         self.refresh()
 
     def refresh(self):
-        # Insert any due recurring entries first. If new entries were added,
-        # on_change() saves and triggers a full _refresh_all_views which calls
-        # refresh() again with the updated data — return early to avoid a
-        # redundant second render of the same list.
-        if _apply_recurring(self.budget):
-            self.on_change()
-            return
-
         _clear_box(self.list_box)
 
         cutoff = (date.today() - timedelta(days=self._filter_days)).isoformat()
@@ -439,7 +444,12 @@ class SpendingLogView(Gtk.Box):
             return
 
         cat_map = {c.id: c.name for c in self.budget.categories}
-        entries = sorted(self.budget.spending, key=lambda e: e.date, reverse=True)
+        cutoff  = (date.today() - timedelta(days=self._filter_days)).isoformat()
+        entries = sorted(
+            [e for e in self.budget.spending if e.date >= cutoff],
+            key=lambda e: e.date,
+            reverse=True,
+        )
 
         buf = io.StringIO()
         writer = csv.writer(buf)
@@ -459,7 +469,7 @@ class SpendingLogView(Gtk.Box):
 
         from gi.repository import Adw
         toast = Adw.Toast()
-        toast.set_title(f"Exported {len(entries)} entries")
+        toast.set_title(f"Exported {len(entries)} entries (last {self._filter_days} days)")
         root = self.get_root()
         if hasattr(root, "add_toast"):
             root.add_toast(toast)

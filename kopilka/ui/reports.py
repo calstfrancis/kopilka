@@ -201,7 +201,12 @@ class ReportsView(Gtk.Box):
         spent = sum(e.amount for e in entries)
         one_time_inc  = BudgetCalculator.one_time_income_in_period(self.budget, start, end)
         one_time_exp  = BudgetCalculator.one_time_expenses_in_period(self.budget, start, end)
-        total_budget  = sum(c.budget_monthly for c in self.budget.categories) * months
+        if self._period == "month":
+            # Use seasonal overrides for the current month
+            today = date.today()
+            total_budget = sum(c.budget_for_month(today.month) for c in self.budget.categories)
+        else:
+            total_budget = sum(c.budget_monthly for c in self.budget.categories) * months
         diff = total_budget - spent
 
         lb = _make_listbox()
@@ -359,16 +364,17 @@ class ReportsView(Gtk.Box):
             one_exp = BudgetCalculator.one_time_expenses_in_period(
                 self.budget, m_start, m_end
             )
-            total_out = spent + one_exp
 
             label = m_start.strftime("%b")
-            chart_data.append((label, total_out, monthly_budget))
+            # Bar shows only category spending vs budget; one-time fixed expenses
+            # are annotated in the text rows below the chart.
+            chart_data.append((label, spent, monthly_budget))
 
-            if total_out == 0 and not month_entries:
-                row_data.append((m_start, total_out, one_exp, False))
+            if spent == 0 and not month_entries:
+                row_data.append((m_start, spent, one_exp, False))
                 continue
             has_data = True
-            row_data.append((m_start, total_out, one_exp, True))
+            row_data.append((m_start, spent, one_exp, True))
 
         chart = MonthlyBarChart(chart_data)
         group.add(chart)
@@ -376,20 +382,20 @@ class ReportsView(Gtk.Box):
         lb = _make_listbox()
         group.add(lb)
 
-        for m_start, total_out, one_exp, include in row_data:
+        for m_start, spent, one_exp, include in row_data:
             if not include:
                 continue
-            diff = monthly_budget - total_out
+            diff = monthly_budget - spent
             row = Adw.ActionRow()
             row.set_title(m_start.strftime("%B %Y"))
 
             if monthly_budget > 0:
                 sign = "−$" if diff < 0 else "+$"
                 css  = "error" if diff < 0 else "success"
-                row.set_subtitle(f"{sign}{abs(diff):,.2f} vs budget")
+                row.set_subtitle(f"{sign}{abs(diff):,.2f} vs category budgets")
 
-            extra = f"  +${one_exp:,.2f} one-time" if one_exp > 0 else ""
-            row.add_suffix(_amount_lbl(f"${total_out:,.2f}{extra}"))
+            extra = f"  +${one_exp:,.2f} fixed one-time" if one_exp > 0 else ""
+            row.add_suffix(_amount_lbl(f"${spent:,.2f}{extra}"))
             lb.append(row)
 
         if not has_data:

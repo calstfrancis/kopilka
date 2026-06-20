@@ -174,7 +174,7 @@ class Dashboard(Gtk.Box):
             _set_amount(self.avail_lbl, unallocated, color_class="success")
 
         ot_spent   = BudgetCalculator.yearly_one_time_spending(budget)
-        annual_pool = max(0.0, BudgetCalculator.available_to_spend(budget)) * 12
+        annual_pool = max(0.0, BudgetCalculator.unallocated_discretionary(budget)) * 12
         ot_remain  = annual_pool - ot_spent
         _set_amount(self.onetimey_lbl, ot_spent, negative=True,
                     color_class="dim-label" if ot_spent == 0 else "warning")
@@ -210,18 +210,25 @@ class Dashboard(Gtk.Box):
             row.set_sensitive(False)
             bills_exp.add_row(row)
         else:
+            _BILL_FREQ_ABBR = {
+                "weekly": "/wk", "biweekly": "/2wk", "monthly": "/mo",
+                "semesterly": "/sem", "yearly": "/yr",
+            }
             for exp, due_date, days_until in upcoming:
                 row = Adw.ActionRow()
                 row.set_title(exp.name)
                 if days_until == 0:
-                    row.set_subtitle("Due today")
+                    row.set_subtitle(f"Due today  ·  {exp.frequency}")
                     row.add_css_class("error")
                 elif days_until == 1:
-                    row.set_subtitle("Due tomorrow")
+                    row.set_subtitle(f"Due tomorrow  ·  {exp.frequency}")
                     row.add_css_class("warning")
                 else:
-                    row.set_subtitle(f"Due in {days_until} days  ({due_date.strftime('%b %-d')})")
-                row.add_suffix(_make_amount_label(f"${exp.amount:,.2f}"))
+                    row.set_subtitle(
+                        f"Due in {days_until} days  ({due_date.strftime('%b %-d')})  ·  {exp.frequency}"
+                    )
+                amt_text = f"${exp.amount:,.2f}{_BILL_FREQ_ABBR.get(exp.frequency, '')}"
+                row.add_suffix(_make_amount_label(amt_text))
                 bills_exp.add_row(row)
 
         self._bills_container.add(bills_exp)
@@ -278,6 +285,13 @@ class Dashboard(Gtk.Box):
         sem_start   = date(today.year, 1, 1) if today.month <= 6 else date(today.year, 7, 1)
         year_start  = date(today.year, 1, 1)
 
+        _PERIOD_WINDOW = {
+            "weekly":     f"week of {week_start.strftime('%-d %b')}",
+            "monthly":    today.strftime("%B"),
+            "semesterly": f"H{1 if today.month <= 6 else 2} {today.year}",
+            "yearly":     str(today.year),
+        }
+
         for cat in budget.categories:
             effective = BudgetCalculator.category_effective_budget(cat, budget.spending, today)
             rollover  = BudgetCalculator.category_rollover(cat, budget.spending, today)
@@ -304,7 +318,8 @@ class Dashboard(Gtk.Box):
 
             row = Adw.ActionRow()
             row.set_title(cat.name)
-            subtitle = f"${period_spent:,.2f} spent of ${period_budget:,.2f}/{period_label}"
+            window_label = _PERIOD_WINDOW.get(cat.budget_period, "")
+            subtitle = f"{window_label}: ${period_spent:,.2f} of ${period_budget:,.2f}/{period_label}"
             if abs(rollover) > 0.01:
                 sign = "+" if rollover > 0 else "−"
                 subtitle += f"  ·  rollover {sign}${abs(rollover):,.2f}"

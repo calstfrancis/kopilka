@@ -97,8 +97,9 @@ class AddIncomeDialog(Adw.Dialog):
 
         self.amount_row = Adw.SpinRow.new_with_range(0, 9_999_999, 1)
         self.amount_row.set_title("Amount ($)")
+        self.amount_row.set_subtitle("Enter your take-home (after-tax) amount")
         self.amount_row.set_digits(2)
-        self.amount_row.set_tooltip_text("Amount received per pay period")
+        self.amount_row.set_tooltip_text("Amount received per pay period, after taxes and deductions")
         group.add(self.amount_row)
 
         self.freq_row = Adw.ComboRow()
@@ -173,6 +174,14 @@ class AddIncomeDialog(Adw.Dialog):
         frequency = FREQUENCIES[self.freq_row.get_selected()]
         item_date = self.date_row.get_text().strip() if frequency == "once" else ""
         next_payday = self.payday_row.get_text().strip() if frequency == "biweekly" else ""
+
+        if frequency == "once" and item_date:
+            try:
+                date.fromisoformat(item_date)
+                self.date_row.remove_css_class("error")
+            except ValueError:
+                self.date_row.add_css_class("error")
+                return
 
         if self.existing:
             self.existing.name = name
@@ -353,6 +362,14 @@ class AddExpenseDialog(Adw.Dialog):
         amount = self.amount_row.get_value()
         frequency = FREQUENCIES[self.freq_row.get_selected()]
         item_date = self.exp_date_row.get_text().strip() if frequency == "once" else ""
+
+        if frequency == "once" and item_date:
+            try:
+                date.fromisoformat(item_date)
+                self.exp_date_row.remove_css_class("error")
+            except ValueError:
+                self.exp_date_row.add_css_class("error")
+                return
 
         due_day = 0
         due_weekday = -1

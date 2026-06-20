@@ -2,6 +2,28 @@
 
 All notable changes to Kopilka are documented here.
 
+## [0.5.5-dev1] — bug-fix pass
+
+### Fixed
+- **Annual one-time pool was wildly overstated** — the pool was calculated as `available_to_spend × 12` which includes money already allocated to spending categories; now uses `unallocated_discretionary × 12` so the pool reflects only genuinely free funds
+- **Debt avalanche / snowball now model payment cascade** — previously each debt was evaluated in isolation; freed payments from a paid-off debt now roll into the next priority debt, giving accurate "true avalanche" interest savings
+- **Recurring entries could crash app at startup** — `_apply_recurring` was called inside `SpendingLogView.refresh()` which fired during `__init__`, before later views (Reports, Savings, Settings) existed; `_refresh_all_views()` then referenced those missing attributes. Recurring processing is now owned by `AppWindow._on_startup()` and `_on_focus_changed()` instead
+- **Recurring entries now fire on window focus** — previously entries due while the app was in the background would not fire until any budget change was made; the focus-change handler now triggers them immediately
+- **`save_budget` was not atomic** — a crash during write left a truncated `budget.json`; now uses a temp-file + `os.replace()` pattern
+- **Color pills unreadable on light category colors** — hardcoded `color:white` text was invisible on yellow (#f6d32d) and stone (#9a9996); pill foreground is now chosen by luminance
+- **CSV export ignored the active time filter** — exported all spending history regardless of the 7/30/90/365-day view; now exports only the visible window
+- **Date fields in income/expense forms had no validation** — malformed dates on one-time items were silently saved; both forms now reject invalid ISO dates on save
+- **Monthly Reports used base budget, not seasonal overrides** — "This Month" summary compared spending against `budget_monthly`, ignoring per-month overrides; now uses `budget_for_month(current_month)`
+- **Monthly trend chart folded fixed one-time expenses into category spending bars** — a month with annual insurance appeared over-budget even if all category spending was fine; the bar now shows category spending only, with fixed one-time expenses annotated as text
+
+### Improved
+- **Dashboard category rows now show the time window** — e.g. "week of 16 Jun: $45 of $150/wk" instead of just "$45 of $150/wk", making mixed weekly/monthly categories unambiguous
+- **Bill reminders show frequency** — subtitle now includes the billing frequency; amount label includes the per-period unit (e.g. "$18.99/mo")
+- **Income list shows per-period unit** — each income row now displays "$3,500/2wk" instead of "$3,500", avoiding ambiguity between pay frequencies
+- **Income form prompts for take-home pay** — subtitle on the amount field now reads "Enter your take-home (after-tax) amount"
+
+---
+
 ## [0.5.4] — 2026-06-10
 
 ### Fixed

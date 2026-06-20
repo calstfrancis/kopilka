@@ -291,7 +291,15 @@ class AppWindow(Adw.ApplicationWindow):
     # ── Sync ──────────────────────────────────────────────────────────────────
 
     def _on_startup(self):
-        """Run once after window is mapped: wizard check then conflict check."""
+        """Run once after window is mapped: apply recurring entries, wizard, conflict check."""
+        from kopilka.ui.spending_log import _apply_recurring
+        if _apply_recurring(self.budget):
+            SyncManager.update_metadata(self.budget, self._current_user)
+            if save_budget(self.budget):
+                self._load_mtime = SyncManager.get_file_mtime(self._budget_path)
+            self._refresh_all_views()
+            self._webdav_upload_async()
+
         if self._load_error:
             toast = Adw.Toast()
             toast.set_title(self._load_error)
@@ -310,6 +318,13 @@ class AppWindow(Adw.ApplicationWindow):
     def _on_focus_changed(self, _win, _param):
         if not self.is_active():
             return
+        from kopilka.ui.spending_log import _apply_recurring
+        if _apply_recurring(self.budget):
+            SyncManager.update_metadata(self.budget, self._current_user)
+            if save_budget(self.budget):
+                self._load_mtime = SyncManager.get_file_mtime(self._budget_path)
+            self._refresh_all_views()
+            self._webdav_upload_async()
         cfg = load_config()
         self._webdav = build_from_config(cfg)
         if self._webdav.is_configured():
