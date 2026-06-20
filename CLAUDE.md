@@ -19,6 +19,20 @@ python -m kopilka.kopilka
 - Budget file: `~/.config/kopilka/budget.json`
 - App config: `~/.config/kopilka/config.json` (user names, budget path, sync path)
 
+## Version and release name
+
+`kopilka/__init__.py` exports both `__version__` and `__release_name__`. Both must be kept
+in sync when bumping for a release:
+
+```python
+__version__ = "0.5.5"
+__release_name__ = "Level Ledger"
+```
+
+`app_window.py` imports `_RELEASE_NAME` and uses it in `set_version()` and
+`set_release_notes()` of the `Adw.AboutDialog`. When releasing, update both symbols and
+rewrite `set_release_notes()` with the new What's New text.
+
 ## Module map
 
 | Path | Responsibility |

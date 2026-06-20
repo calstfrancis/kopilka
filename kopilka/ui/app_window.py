@@ -15,7 +15,7 @@ from kopilka.ui.spending_log import SpendingLogView
 from kopilka.ui.reports import ReportsView
 from kopilka.ui.savings import SavingsView
 from kopilka.ui.settings import SettingsView
-from kopilka import __version__ as _APP_VERSION
+from kopilka import __version__ as _APP_VERSION, __release_name__ as _RELEASE_NAME
 from kopilka.storage.json_io import (
     load_budget, save_budget, is_first_launch,
     get_budget_path, load_config, save_config,
@@ -641,7 +641,7 @@ class AppWindow(Adw.ApplicationWindow):
     def _open_changelog(self):
         about = Adw.AboutDialog()
         about.set_application_name("Kopilka")
-        about.set_version(_APP_VERSION)
+        about.set_version(f'{_APP_VERSION} “{_RELEASE_NAME}”')
         about.set_developer_name("Cal St Francis")
         about.set_application_icon("io.github.calstfrancis.kopilka")
         about.set_issue_url("https://github.com/calstfrancis/kopilka/issues")
@@ -649,10 +649,21 @@ class AppWindow(Adw.ApplicationWindow):
         about.set_license_type(Gtk.License.GPL_3_0)
         about.set_release_notes_version(_APP_VERSION)
         about.set_release_notes(
-            "<p>Launch reliability fix.</p>"
+            f"<p>“{_RELEASE_NAME}” — math corrections, crash fixes, and UX clarity improvements.</p>"
             "<ul>"
-            "<li>App now opens correctly from the GNOME launcher and Discover.</li>"
-            "<li>Repeated launcher clicks raise the existing window instead of failing silently.</li>"
+            "<li>Annual one-time purchase pool now uses unallocated discretionary funds only, not the full pre-category discretionary amount.</li>"
+            "<li>Debt avalanche and snowball strategies now model payment cascade — freed payments from a paid-off debt roll into the next priority debt.</li>"
+            "<li>Recurring entries no longer risk crashing the app at startup; they now fire safely after all views are initialised, and also on window focus.</li>"
+            "<li>Budget saves are now atomic — a crash during write can no longer corrupt budget.json.</li>"
+            "<li>Category color pills with light backgrounds now use black text for legibility.</li>"
+            "<li>CSV export now respects the active time filter instead of always exporting full history.</li>"
+            "<li>One-time date fields in income and expense forms now validate the date before saving.</li>"
+            "<li>Monthly Reports summary now applies seasonal budget overrides for the current month.</li>"
+            "<li>Monthly trend bars now show category spending only; fixed one-time expenses are annotated separately.</li>"
+            "<li>Dashboard category rows now show the time window so mixed weekly/monthly categories are unambiguous.</li>"
+            "<li>Bill reminders now show billing frequency and per-period unit on the amount.</li>"
+            "<li>Income rows now display the per-period unit (e.g. $3,500/2wk).</li>"
+            "<li>Income amount field now prompts to enter take-home (after-tax) pay.</li>"
             "</ul>"
         )
         about.present(self)
