@@ -9,97 +9,14 @@ permissions:
   contents: write
 
 jobs:
-  appimage:
-    name: Build AppImage
-    runs-on: ubuntu-22.04
+  release:
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Parse version
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            python3 python3-pip python3-gi python3-gi-cairo python3-cairo \
-            gir1.2-gtk-4.0 gir1.2-adw-1 libgtk-4-1 libadwaita-1-0 \
-            libgirepository-1.0-1 gir1.2-pango-1.0 gir1.2-gdkpixbuf-2.0 \
-            librsvg2-common adwaita-icon-theme \
-            fuse libfuse2 wget
-
-      - name: Install appimage-builder
-        run: |
-          pip install appimage-builder
-
-      - name: Build AppImage
-        env:
-          APP_VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          appimage-builder --recipe AppImageBuilder.yml --skip-tests
-
-      - name: Rename artifact
-        run: |
-          mv Kopilka-*.AppImage Kopilka-${{ steps.version.outputs.version }}-x86_64.AppImage || true
-
-      - name: Create GitHub Release and upload AppImage
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: Kopilka ${{ github.ref_name }}
+          name: "Kopilka ${{ github.ref_name }}"
           body_path: CHANGELOG.md
-          files: |
-            Kopilka-*-x86_64.AppImage
-            Kopilka-*-x86_64.AppImage.zsync
-
-  rpm:
-    name: Build RPM
-    runs-on: ubuntu-22.04
-    container:
-      image: fedora:41
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Parse version
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Install build tools
-        run: |
-          dnf install -y --setopt=install_weak_deps=False \
-            python3-devel python3-setuptools python3-wheel python3-pip \
-            rpm-build rpmdevtools
-
-      - name: Set up RPM tree
-        run: rpmdev-setuptree
-
-      - name: Create source tarball
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          mkdir -p kopilka-${VERSION}
-          cp -r kopilka pyproject.toml README.md CHANGELOG.md \
-            io.github.calstfrancis.kopilka.desktop \
-            kopilka-${VERSION}/
-          tar czf ~/rpmbuild/SOURCES/kopilka-${VERSION}.tar.gz kopilka-${VERSION}/
-
-      - name: Build RPM
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          rpmbuild -bb packaging/kopilka.spec \
-            --define "version ${VERSION}" \
-            --define "_rpmdir $(pwd)/dist"
-
-      - name: Locate RPM
-        id: find_rpm
-        run: echo "rpm=$(find dist -name '*.rpm' | head -1)" >> "$GITHUB_OUTPUT"
-
-      - name: Upload RPM to release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: ${{ steps.find_rpm.outputs.rpm }}
