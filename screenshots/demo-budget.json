@@ -1,0 +1,45 @@
+{
+  "version": "0.1.0",
+  "metadata": {
+    "couple": ["Partner A", "Partner B"],
+    "created": "2026-01-01T00:00:00",
+    "last_modified": "2026-07-01T00:00:00",
+    "last_modified_by": "Partner A"
+  },
+  "config": {
+    "currency": "CAD",
+    "sync_path": "",
+    "bills_look_ahead_days": 7
+  },
+  "income": [
+    {"name": "Salary", "owner": "Partner A", "amount": 3200.0, "frequency": "biweekly", "notes": "", "active": true, "date": "", "next_payday": "2026-07-10", "id": "demo-income-1"},
+    {"name": "Salary", "owner": "Partner B", "amount": 2600.0, "frequency": "biweekly", "notes": "", "active": true, "date": "", "next_payday": "2026-07-10", "id": "demo-income-2"}
+  ],
+  "expenses_fixed": [
+    {"name": "Rent", "amount": 1800.0, "frequency": "monthly", "notes": "", "active": true, "date": "", "due_day": 1, "due_weekday": -1, "due_doy": 0, "id": "demo-exp-1"},
+    {"name": "Internet", "amount": 80.0, "frequency": "monthly", "notes": "", "active": true, "date": "", "due_day": 15, "due_weekday": -1, "due_doy": 0, "id": "demo-exp-2"},
+    {"name": "Car Insurance", "amount": 140.0, "frequency": "monthly", "notes": "", "active": true, "date": "", "due_day": 5, "due_weekday": -1, "due_doy": 0, "id": "demo-exp-3"}
+  ],
+  "debt": [
+    {"name": "Student Loan", "balance": 8500.0, "rate": 4.5, "payment": 220.0, "frequency": "monthly", "notes": "", "balance_history": [], "id": "demo-debt-1"}
+  ],
+  "categories": [
+    {"id": "demo-cat-1", "name": "Groceries", "budget_amount": 180.0, "budget_period": "weekly", "shared": true, "surplus_policy": "ignore", "deficit_policy": "ignore", "deficit_amortize_cycles": 3, "monthly_overrides": {}, "color": "#3584e4"},
+    {"id": "demo-cat-2", "name": "Dining Out", "budget_amount": 60.0, "budget_period": "weekly", "shared": true, "surplus_policy": "ignore", "deficit_policy": "ignore", "deficit_amortize_cycles": 3, "monthly_overrides": {}, "color": "#e5a50a"},
+    {"id": "demo-cat-3", "name": "Transport", "budget_amount": 100.0, "budget_period": "monthly", "shared": true, "surplus_policy": "ignore", "deficit_policy": "ignore", "deficit_amortize_cycles": 3, "monthly_overrides": {}, "color": "#33d17a"},
+    {"id": "demo-cat-4", "name": "Fun Money", "budget_amount": 50.0, "budget_period": "weekly", "shared": false, "surplus_policy": "ignore", "deficit_policy": "ignore", "deficit_amortize_cycles": 3, "monthly_overrides": {}, "color": "#c061cb"}
+  ],
+  "spending": [
+    {"date": "2026-07-02", "category_id": "demo-cat-1", "amount": 62.14, "description": "Weekly groceries", "user": "Partner A", "id": "demo-spend-1"},
+    {"date": "2026-07-03", "category_id": "demo-cat-2", "amount": 24.50, "description": "Pizza night", "user": "Partner B", "id": "demo-spend-2"},
+    {"date": "2026-07-05", "category_id": "demo-cat-3", "amount": 40.00, "description": "Gas", "user": "Partner A", "id": "demo-spend-3"}
+  ],
+  "savings_goals": [
+    {"name": "Vacation Fund", "target": 3000.0, "current": 850.0, "target_date": "2027-01-01", "notes": "", "id": "demo-goal-1"}
+  ],
+  "assets": [
+    {"name": "Joint Chequing", "asset_type": "chequing", "owner": "Partner A", "balance": 2400.0, "institution": "Demo Bank", "interest_rate": 0.0, "notes": "", "balance_history": [], "id": "demo-asset-1"},
+    {"name": "Savings", "asset_type": "savings", "owner": "Partner B", "balance": 6100.0, "institution": "Demo Bank", "interest_rate": 2.5, "notes": "", "balance_history": [], "id": "demo-asset-2"}
+  ],
+  "recurring": []
+}
