@@ -2,7 +2,7 @@
 <component type="desktop-application">
   <id>io.github.calstfrancis.kopilka</id>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>GPL-3.0-or-later</project_license>
+  <project_license>MIT</project_license>
 
   <name>Kopilka</name>
   <summary>Couples budget planner with shared finance management</summary>
@@ -29,6 +29,13 @@
   </description>
 
   <launchable type="desktop-id">io.github.calstfrancis.kopilka.desktop</launchable>
+
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/calstfrancis/kopilka/main/screenshots/kopilka-main.png</image>
+      <caption>Dashboard showing income, budget breakdown, and upcoming bills</caption>
+    </screenshot>
+  </screenshots>
 
   <url type="homepage">https://github.com/calstfrancis/kopilka</url>
   <url type="bugtracker">https://github.com/calstfrancis/kopilka/issues</url>
